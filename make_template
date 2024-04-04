@@ -1,0 +1,52 @@
+CC = g++
+CFLAGS += -Wall -Wextra -std=c++17
+LDFLAGS =
+
+# 生成的可执行文件名称
+TARGET = app
+
+# Debug 编译选项
+DEBUGDIR = obj/debug
+DEBUG_TARGET = $(TARGET)_debug
+
+# Release 编译选项
+RELEASEDIR = obj/release
+RELEASE_TARGET = $(TARGET)_release
+
+# 源文件
+SRCS := $(wildcard *.cpp)
+# 生成的目标文件
+DEBUG_OBJS := $(patsubst %.cpp,$(DEBUGDIR)/%.o,$(SRCS))
+RELEASE_OBJS := $(patsubst %.cpp,$(RELEASEDIR)/%.o,$(SRCS))
+
+# 默认 Debug 
+debug: $(DEBUGDIR) $(DEBUG_TARGET)
+
+# Debug  编译目标
+all: debug release  
+
+
+$(DEBUGDIR):
+	mkdir -p $(DEBUGDIR)
+
+$(DEBUGDIR)/%.o: %.cpp
+	$(CC) $(CFLAGS) -g -c $< -o $@
+
+$(DEBUG_TARGET): $(DEBUG_OBJS)
+	$(CC) $^ $(LDFLAGS) -o $@
+
+# Release 编译目标
+release: $(RELEASEDIR) $(RELEASE_TARGET)
+
+$(RELEASEDIR):
+	mkdir -p $(RELEASEDIR)
+
+$(RELEASEDIR)/%.o: %.cpp
+	$(CC) $(CFLAGS) -O3 -c $< -o $@
+
+$(RELEASE_TARGET): $(RELEASE_OBJS)
+	$(CC) $^ $(LDFLAGS) -o $@
+
+# 清理目标
+clean:
+	rm -rf obj $(DEBUG_TARGET) $(RELEASE_TARGET)
