@@ -90,6 +90,7 @@ int main(int argc, char * argv[])
                 if(len == 0)
                 {
                     std::cout <<"df:"<< client << " disconnected\n";
+                    close(client);
                     del_client.insert(client);
                 }
                 else
