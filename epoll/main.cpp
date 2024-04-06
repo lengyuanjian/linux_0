@@ -7,6 +7,7 @@
 #include <vector>
 #include <set>
 #include <sys/poll.h>
+#include <sys/epoll.h>
 
 int main(int argc, char * argv[]) 
 {
@@ -53,63 +54,52 @@ int main(int argc, char * argv[])
     }
     std::cout<<"fd:" << server_fd <<"server "<< ip << ":"<< port <<"\n";
     
-    pollfd poll_sockets[1024];
-    int nfds = 0;
-    poll_sockets[nfds].fd = server_fd;
-    poll_sockets[nfds].events = POLLIN;
-    nfds++;
-    while(true) 
+    int epfd = epoll_create(1); // 参数只要大于0就可以
+    epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.fd = server_fd;
+
+    epoll_ctl(epfd, EPOLL_CTL_ADD,server_fd,&ev);
+    epoll_event evs[1024] = {};
+    while(1)
     {
-        int ret = poll(poll_sockets, nfds, 500);
-        if(ret == -1)
+        int nready = epoll_wait(epfd, evs,1024,-1);
+        for(int i = 0; i < nready; ++i)
         {
-
-        }
-        else if(ret == 0)
-        {}
-        else
-        {
-            for(int i = 1; i < nfds; ++i)
-            {
-                if(poll_sockets[i].revents & POLLIN)
-                {
-                    int client = poll_sockets[i].fd;
-                    char buff[4096] = {};
-                    auto len = read(client, buff, 4096);
-                    if(len == 0)
-                    {
-                        std::cout <<"df:"<< client << " disconnected\n";
-                        close(client);
-                        poll_sockets[i] = poll_sockets[nfds - 1]; // 或者设置-1表示清理
-                        nfds--;
-                        i--;
-                    }
-                    else
-                    {
-                        std::cout <<"df:"<< client <<" :"<<buff<< "\n";
-                        send(client,  buff, len, 0);
-                    }
-                }
-
-            }
-            if(poll_sockets[0].revents & POLLIN)
+            int sock = evs[i].data.fd;
+            if(sock == server_fd)
             {
                 int new_socket;
                 if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen))<0) 
                 {
                     perror("accept error");
                 }
-                poll_sockets[nfds].fd = new_socket;
-                poll_sockets[nfds].events = POLLIN;
-                nfds++;
+                ev.events = EPOLLIN;
+                ev.data.fd = new_socket;
+                epoll_ctl(epfd, EPOLL_CTL_ADD,new_socket,&ev);
                 char ip_str[INET_ADDRSTRLEN];
                 inet_ntop(AF_INET, &address.sin_addr, ip_str, INET_ADDRSTRLEN);
 
                 unsigned short port = ntohs(address.sin_port);
                 std::cout << "New connection, fd: " << new_socket <<"ip:"<< ip_str << ":"<< port <<"\n";
             }
+            else if(evs[i].events & EPOLLIN)
+            {
+                char buff[4096] = {};
+                auto len = read(sock, buff, 4096);
+                if(len == 0)
+                {
+                    std::cout <<"df:"<< sock << " disconnected\n";
+                    close(sock);
+                    epoll_ctl(epfd, EPOLL_CTL_DEL,sock,nullptr);
+                }
+                else
+                {
+                    std::cout <<"df:"<< sock <<" :"<<buff<< "\n";
+                    send(sock,  buff, len, 0);
+                }
+            }
         }
-            
     }
     
     return 0;
