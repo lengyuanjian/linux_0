@@ -59,6 +59,7 @@ namespace sh_server
         int             m_server_fd{0};
         event *         m_p_event{nullptr};
         std::string     m_ip;
+        int             m_epfd;
         unsigned short  m_port{0};
         std::thread     m_epoll_thread;
         bool            m_epoll_run{true};
@@ -121,7 +122,13 @@ namespace sh_server
         {
             for(auto [id, p_info]: m_sh_fd_2_socket_info)
             {
-                ::close(p_info->m_fd);
+                if(p_info->m_fd != m_server_fd)
+                {
+                    m_p_event->on_disconnected(p_info);
+                }
+                epoll_ctl(m_epfd, EPOLL_CTL_DEL,p_info->m_fd,nullptr);
+                ::close(p_info->m_fd); 
+                //del_clinet_info(info);
                 delete p_info;
             } 
         }
@@ -157,7 +164,7 @@ namespace sh_server
         }
         void run_epoll()
         {
-            int epfd = epoll_create(1); // 参数只要大于0就可以
+            m_epfd = epoll_create(1); // 参数只要大于0就可以
             //while(m_epoll_run)
             {
                 epoll_event ev;
@@ -165,11 +172,11 @@ namespace sh_server
 
                 ev.data.ptr = get_clinet_info(m_server_fd);
 
-                epoll_ctl(epfd, EPOLL_CTL_ADD, m_server_fd, &ev);
+                epoll_ctl(m_epfd, EPOLL_CTL_ADD, m_server_fd, &ev);
                 epoll_event evs[1024] = {};
                 while(m_epoll_run)
                 {
-                    int nready = epoll_wait(epfd, evs, 1024, 200);
+                    int nready = epoll_wait(m_epfd, evs, 1024, 200);
                     for(int i = 0; i < nready; ++i)
                     {
                         socket_info * info = (socket_info *)(evs[i].data.ptr);
@@ -191,7 +198,7 @@ namespace sh_server
                                 epoll_event ev;
                                 ev.events = EPOLLIN;
                                 ev.data.ptr = clinet_info;
-                                epoll_ctl(epfd, EPOLL_CTL_ADD,new_socket,&ev);
+                                epoll_ctl(m_epfd, EPOLL_CTL_ADD,new_socket,&ev);
                                 m_p_event->on_connected(clinet_info);
                             }
                             
@@ -206,7 +213,7 @@ namespace sh_server
                             {
                                 m_p_event->on_disconnected(info);
                                 ::close(sock);
-                                epoll_ctl(epfd, EPOLL_CTL_DEL,sock,nullptr);
+                                epoll_ctl(m_epfd, EPOLL_CTL_DEL,sock,nullptr);
                                 del_clinet_info(info);
                             }
                             else
@@ -218,7 +225,7 @@ namespace sh_server
                     }
                 }
             }
-            ::close(epfd);
+            ::close(m_epfd);
         }
     
 
