@@ -5,13 +5,15 @@
 //       B         C
 //      / \      /   \
 //     D   E    F     G
-//    / \   \    \
-//   H   I   J    K
+
 */
-// 前序遍历：ABDHIEJCFKG
-// 中序遍历：HDIBEJAFKCG
-// 后序遍历：HIDJEBKFGCA
-// 层序遍历：ABCDEFGHIJK
+
+
+
+// 前序遍历：A B D E C F G 
+// 中序遍历：D B E A F C G 
+// 后序遍历：D E B F G C A
+// 层序遍历：
 struct tree_node
 {
     int                key{0};
@@ -54,20 +56,22 @@ tree_node * insert_node(tree_node * root, int key, char value)
         root->data = value;
         return root;
     }
-    else if(root->key < key)
+    else if(root->key > key)
     {
         tree_node * node = insert_node(root->l, key, value);
         if(root->l == nullptr)
         {
             root->l = node;
+            node->p = root;
         }
     }
-    else if(root->key > key)
+    else if(root->key < key)
     {
         tree_node * node = insert_node(root->r, key, value);
         if(root->r == nullptr)
         {
             root->r = node;
+            node->p = root;
         }
     }
     return root;
@@ -79,11 +83,11 @@ tree_node * find_node(tree_node * root, int key)
     {
         return root;
     }
-    else if(root->key < key)
+    else if(root->key > key)
     {
         return find_node(root->l, key);
     }
-    else if(root->key > key)
+    else if(root->key < key)
     {
         return find_node(root->r, key);
     } 
@@ -99,6 +103,140 @@ void release_tree(tree_node *root)
     }
 }
 
+// preorder traversal, inorder traversal and postorder traversal.
+// 根-左-右
+void preface_traversal(tree_node *root)
+{
+     if(root != nullptr)
+     {
+        std::cout<< root->data << " ";
+        preface_traversal(root->l);
+        preface_traversal(root->r);
+     }
+}
+// 左-根-右
+void inorder_traversal(tree_node *root)
+{
+     if(root != nullptr)
+     {
+        inorder_traversal(root->l);
+        std::cout<< root->data << " ";
+        inorder_traversal(root->r);
+     }
+}
+// 左-右-根
+void postorder_traversal(tree_node *root)
+{
+     if(root != nullptr)
+     {
+        postorder_traversal(root->l);
+        postorder_traversal(root->r);
+        std::cout<< root->data << " ";
+     }
+}
+
+// 层序遍历
+void level_order_traversal(tree_node *root)
+{
+    struct  queue_node
+    {
+        tree_node *data;
+        queue_node *next;
+    };
+    struct fifo_queue
+    {
+        queue_node * front;
+        queue_node * rear;
+    }queue = {nullptr, nullptr};
+
+    queue.front = (queue_node *)malloc(sizeof(queue_node));
+    queue.rear  = (queue_node *)malloc(sizeof(queue_node));
+    queue.front->data = root;
+    queue.front->next = queue.rear;
+    queue.rear->data = nullptr;
+    queue.rear->next = nullptr;
+
+    while(queue.front != nullptr)
+    {   
+        queue_node * temp = queue.front;
+        tree_node *tree_node = queue.front->data;
+        queue.front = queue.front->next;
+
+        if(tree_node != nullptr)
+        {
+            std::cout<< tree_node->data << " ";
+            if(tree_node->l != nullptr)
+            {
+                queue.rear->data = tree_node->l;
+                queue.rear->next = (queue_node *)malloc(sizeof(queue_node));
+                queue.rear = queue.rear->next;
+                queue.rear->next = nullptr;
+                queue.rear->data = nullptr;
+            }
+            if(tree_node->r != nullptr)
+            {
+                queue.rear->data = tree_node->r;
+                queue.rear->next = (queue_node *)malloc(sizeof(queue_node));
+                queue.rear = queue.rear->next;
+                queue.rear->next = nullptr;
+                queue.rear->data = nullptr;
+            } 
+        }
+        free(temp);
+    }
+}
+
+// 有问题版本
+void level_order_traversal1(tree_node *root)
+{
+    struct  queue_node
+    {
+        tree_node *data;
+        queue_node *next;
+
+    };
+    struct fifo_queue
+    {
+        queue_node * front;
+        queue_node * rear;
+    }queue = {nullptr, nullptr};
+
+    if (root == nullptr)
+        return;
+
+    queue.front = (queue_node *)malloc(sizeof(queue_node));
+    queue.front->data = root;
+    queue.front->next = nullptr;
+    queue.rear  = queue.front;
+
+    while(queue.front != nullptr)
+    {   
+        queue_node * temp = queue.front;
+        tree_node *tree_node = queue.front->data;
+        queue.front = queue.front->next;
+
+        if(tree_node != nullptr)
+        {
+            std::cout<< tree_node->data << " ";
+
+            if(tree_node->l != nullptr)
+            {
+                queue.rear->next = (queue_node *)malloc(sizeof(queue_node));
+                queue.rear = queue.rear->next;
+                queue.rear->data = tree_node->l;
+                queue.rear->next = nullptr;
+            }
+            if(tree_node->r != nullptr)
+            {
+                queue.rear->next = (queue_node *)malloc(sizeof(queue_node));
+                queue.rear = queue.rear->next;
+                queue.rear->data = tree_node->r;
+                queue.rear->next = nullptr;
+            }
+        }
+        free(temp);
+    }
+}
 int main(int argc, char * argv[]) 
 {
     std::cout << argv[0] <<std::endl;
@@ -115,6 +253,16 @@ int main(int argc, char * argv[])
     {
         std::cout<<find->data<<"\n";
     }
+    preface_traversal(root);
+    std::cout<<"\n";
+    inorder_traversal(root);
+    std::cout<<"\n";
+    postorder_traversal(root);
+    std::cout<<"\n";
+    level_order_traversal(root);
+    std::cout<<"\n";
+    level_order_traversal1(root);
+    std::cout<<"\n";
     release_tree(root);
 
     return argc;
