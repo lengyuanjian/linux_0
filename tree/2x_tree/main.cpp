@@ -73,6 +73,22 @@ tree_node * insert_node(tree_node * root, int key, char value)
     return root;
 }
 
+tree_node * find_node(tree_node * root, int key)
+{
+    if(root == nullptr || root->key == key)
+    {
+        return root;
+    }
+    else if(root->key < key)
+    {
+        return find_node(root->l, key);
+    }
+    else if(root->key > key)
+    {
+        return find_node(root->r, key);
+    } 
+}
+
 void release_tree(tree_node *root)
 {
     if (root != nullptr)
@@ -94,7 +110,11 @@ int main(int argc, char * argv[])
     insert_node(root, 4, 'E');
     insert_node(root, 7, 'F');
     insert_node(root, 9, 'G');
-
+    tree_node * find = find_node(root, 9);
+    if(find)
+    {
+        std::cout<<find->data<<"\n";
+    }
     release_tree(root);
 
     return argc;
