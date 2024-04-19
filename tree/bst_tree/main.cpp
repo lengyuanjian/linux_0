@@ -1,24 +1,9 @@
 #include <iostream>
-/*
-//           A5  
-//        /     \
-//       B3      C8
-//      / \     /  \
-//     D2  E4  F7   G9
 
-*/
-
-
-
-// 前序遍历：A B D E C F G 
-// 中序遍历：D B E A F C G 
-// 后序遍历：D E B F G C A
-// 层序遍历：
 struct tree_node
 {
     int                key{0};
-    char               data{'*'};
-    tree_node *        p{nullptr};
+    char               data{'*'}; 
     tree_node *        l{nullptr};
     tree_node *        r{nullptr};
 };
@@ -27,8 +12,7 @@ tree_node * create_node(int key, char value)
 {
     tree_node * node = (tree_node *)malloc(sizeof(tree_node));
     node->key = key;
-    node->data = value;
-    node->p = nullptr;
+    node->data = value; 
     node->l = nullptr;
     node->r = nullptr;
     return node;
@@ -61,8 +45,7 @@ tree_node * insert_node(tree_node * root, int key, char value)
         tree_node * node = insert_node(root->l, key, value);
         if(root->l == nullptr)
         {
-            root->l = node;
-            node->p = root;
+            root->l = node; 
         }
     }
     else if(root->key < key)
@@ -70,8 +53,7 @@ tree_node * insert_node(tree_node * root, int key, char value)
         tree_node * node = insert_node(root->r, key, value);
         if(root->r == nullptr)
         {
-            root->r = node;
-            node->p = root;
+            root->r = node; 
         }
     }
     return root;
@@ -93,27 +75,42 @@ tree_node * find_node(tree_node * root, int key)
     } 
 }
 
-// tree_node * delete_node(tree_node * root, int key)
-// {
-//     if(root == nullptr)
-//     {
-//         return root;
-//     } 
-//     else if(root->key == key)
-//     {
-//         return root;
-//     }
-//     else if(root->key > key)
-//     {
-//         tree_node * node = delete_node(root->l, key);
-//         return nullptr;
-//     }
-//     else if(root->key < key)
-//     {
-//         tree_node * node = delete_node(root->r, key);
-//         return nullptr;
-//     } 
-// }
+tree_node * delete_node(tree_node * root, int key)
+{
+    if(root == nullptr)
+    {
+        return nullptr;
+    }
+    else if(root->key == key)
+    {
+        tree_node *ret = root;
+        if(root->l == nullptr && root->r == nullptr)
+        {
+
+        }
+        else if(root->l != nullptr && root->r == nullptr)
+        {
+
+        }
+        else if(root->l == nullptr && root->r != nullptr)
+        {
+
+        }
+        else if(root->l != nullptr && root->r != nullptr)
+        {
+
+        }
+        return ret;
+    }
+    else if(root->key > key)
+    {
+        return delete_node(root->l, key);
+    }
+    else if(root->key < key)
+    {
+        return delete_node(root->r, key);
+    } 
+}
 
 void release_tree(tree_node *root)
 {
@@ -270,7 +267,6 @@ int main(int argc, char * argv[])
     insert_node(root, 4, 'E');
     insert_node(root, 7, 'F');
     insert_node(root, 9, 'G');
-    insert_node(root, 6, '*');
     tree_node * find = find_node(root, 9);
     if(find)
     {
