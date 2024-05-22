@@ -1,0 +1,56 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "clear",
+            "type": "shell",
+            "command": "sh clear.sh",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/",
+            }
+        },
+        {
+            "label": "tcp_p2p make",
+            "type": "shell",
+            "command": "make",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}/tcp_p2p",
+            }
+        },
+        {
+            "label": "tcp_p2p clean",
+            "type": "shell",
+            "command": "make clean",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc",
+            "options": {
+                "cwd": "${workspaceFolder}/tcp_p2p"
+            }
+        },
+        {
+            "label": "tcp_p2p",
+            "type": "shell",
+            "dependsOn": [
+                "tcp_p2p clean",
+                "tcp_p2p make"
+            ],
+            "problemMatcher": [
+                "$gcc"
+            ]
+        }
+    ]
+}
