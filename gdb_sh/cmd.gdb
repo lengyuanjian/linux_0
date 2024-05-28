@@ -1,5 +1,4 @@
-set env PAGET cat 
-set pagination off
+source set_env.gdb
 b main
 commands
 set $i=0
