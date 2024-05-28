@@ -1,11 +1,21 @@
 #include <iostream>
 
+// A B D H I E J K C F L M G N O 
+// H D I B J E K A L F M C N G O 
+// H I D J K E B L M F N O G C A 
+// A B C D E F G H I J K L M N O 
 struct tree_node
 {
     int                key{0};
     char               data{'*'}; 
+    tree_node *        p{nullptr};
     tree_node *        l{nullptr};
     tree_node *        r{nullptr};
+};
+
+struct bst_tree
+{
+    tree_node * root{nullptr};
 };
 
 tree_node * create_node(int key, char value)
@@ -13,8 +23,20 @@ tree_node * create_node(int key, char value)
     tree_node * node = (tree_node *)malloc(sizeof(tree_node));
     node->key = key;
     node->data = value; 
+    node->p = nullptr;
     node->l = nullptr;
     node->r = nullptr;
+    return node;
+}
+
+tree_node * create_node(int key, char value, tree_node * p, tree_node * l, tree_node *r)
+{
+    tree_node * node = (tree_node *)malloc(sizeof(tree_node));
+    node->key = key;
+    node->data = value; 
+    node->p = p;
+    node->l = l;
+    node->r = r;
     return node;
 }
 
@@ -25,38 +47,51 @@ void release_node(tree_node * node)
         free(node);
     }
 }
-
-tree_node * insert_node(tree_node * root, int key, char value)
+      
+tree_node * insert_node(tree_node * node, int key, char value)
 {
-    if(root == nullptr)
+    if(node == nullptr)
     {
-        root = create_node(key, value);
-        root->key = key;
-        root->data = value;
-        return root;
+        return create_node(key, value, nullptr, nullptr, nullptr);
     }
-    if(root->key == key)
+    if(node->key == key)
     {
-        root->data = value;
-        return root;
+        node->data = value;
+        return node;
     }
-    else if(root->key > key)
+    else if(node->key > key)
     {
-        tree_node * node = insert_node(root->l, key, value);
-        if(root->l == nullptr)
+        if(node->l == nullptr)
         {
-            root->l = node; 
+            return node->l = create_node(key, value, node, nullptr, nullptr); 
+        }
+        else
+        {
+            return insert_node(node->l, key, value);
         }
     }
-    else if(root->key < key)
+    else /*if(node->key < key)*/
     {
-        tree_node * node = insert_node(root->r, key, value);
-        if(root->r == nullptr)
+        if(node->r == nullptr)
         {
-            root->r = node; 
+            return node->r = create_node(key, value, node, nullptr, nullptr);
+        }
+        else
+        {
+            return insert_node(node->r, key, value);
         }
     }
-    return root;
+}
+
+tree_node * bst_tree_insert(bst_tree * tree, int key, char value)
+{
+    if(tree->root == nullptr)
+    {
+        tree->root = create_node(key, value);
+        return tree->root;
+    }
+    
+    return insert_node(tree->root, key, value);
 }
 
 tree_node * find_node(tree_node * root, int key)
@@ -69,46 +104,67 @@ tree_node * find_node(tree_node * root, int key)
     {
         return find_node(root->l, key);
     }
-    else if(root->key < key)
+    else /*if(root->key < key)*/
     {
         return find_node(root->r, key);
     } 
+}
+
+tree_node * bst_find_node(bst_tree * tree, int key)
+{
+    if(tree->root == nullptr)
+    {
+        return nullptr;
+    }
+    
+    return find_node(tree->root, key);
 }
 
 tree_node * delete_node(tree_node * root, int key)
 {
     if(root == nullptr)
     {
-        return nullptr;
+        return nullptr; // 未找到键
     }
     else if(root->key == key)
     {
-        tree_node *ret = root;
+        // 情况1：要删除的节点没有子节点
         if(root->l == nullptr && root->r == nullptr)
         {
-
+            release_node(root);
+            return nullptr;
         }
+        // 情况2：要删除的节点只有左子节点
         else if(root->l != nullptr && root->r == nullptr)
         {
-
+            tree_node * node = delete_node(root->l, key);
+            release_node(root);
+            return node;
         }
+        // 情况3：要删除的节点只有右子节点
         else if(root->l == nullptr && root->r != nullptr)
         {
-
+            tree_node * node = delete_node(root->r, root->r->key);
+            release_node(root);
+            return node;
         }
-        else if(root->l != nullptr && root->r != nullptr)
+        // 情况4：要删除的节点既有左子节点又有右子节点
+        else
         {
-
+            tree_node * node = delete_node(root->r, root->r->key);
+            release_node(root);
+            return node;
         }
-        return ret;
     }
     else if(root->key > key)
     {
-        return delete_node(root->l, key);
+        root->l = delete_node(root->l, key);
+        return root;
     }
-    else if(root->key < key)
+    else // if(root->key < key)
     {
-        return delete_node(root->r, key);
+        root->r = delete_node(root->r, key);
+        return root;
     } 
 }
 
@@ -121,6 +177,16 @@ void release_tree(tree_node *root)
         release_node(root);
     }
 }
+
+void bst_release_tree(bst_tree * tree)
+{
+    if(tree->root != nullptr)
+    {
+        release_tree(tree->root);
+        tree->root = nullptr;
+    }
+}
+
 
 // preorder traversal, inorder traversal and postorder traversal.
 // 根-左-右
@@ -259,30 +325,53 @@ void level_order_traversal1(tree_node *root)
 int main(int argc, char * argv[]) 
 {
     std::cout << argv[0] <<std::endl;
-    tree_node * root = nullptr;
-    root = insert_node(root, 5, 'A');
-    insert_node(root, 3, 'B');
-    insert_node(root, 8, 'C');
-    insert_node(root, 2, 'D');
-    insert_node(root, 4, 'E');
-    insert_node(root, 7, 'F');
-    insert_node(root, 9, 'G');
-    tree_node * find = find_node(root, 9);
-    if(find)
-    {
-        std::cout<<find->data<<"\n";
-    }
-    preface_traversal(root);
+    bst_tree  _tree ={}; 
+    bst_tree * tree = &_tree;
+    tree_node * node = nullptr;
+    node = bst_tree_insert(tree, 50, 'A');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 30, 'B');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 80, 'C');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 20, 'D');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 40, 'E');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 70, 'F');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 90, 'G');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 19, 'H');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 21, 'I');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 31, 'J');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 41, 'K');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 51, 'L');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 71, 'M');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 81, 'N');std::cout<< node->key << ":" << node->data <<"\n";
+    node = bst_tree_insert(tree, 91, 'O');std::cout<< node->key << ":" << node->data <<"\n";
+    // char arry[] = {50,30,80,20,40,70,90,19,21,31,41,51,71,81,91};
+    // for(auto key : arry)
+    // {
+    //     tree_node * node = find_node(tree->root, key);
+    //     if(node)
+    //     {
+    //         std::cout<< ((node->p != nullptr) ? node->p->data : '-') << "\n";
+    //         std::cout<< node->key << ":" << node->data <<"\n";
+    //         std::cout<< ((node->l != nullptr) ? node->l->data : '-') << "  " << ((node->r != nullptr) ? node->r->data : '-') <<"\n";
+    //     }
+    //     else
+    //     {
+    //         std::cout<<"err find\n";
+    //     }
+
+    // }
+    preface_traversal(tree->root);
     std::cout<<"\n";
-    inorder_traversal(root);
+    inorder_traversal(tree->root);
     std::cout<<"\n";
-    postorder_traversal(root);
+    postorder_traversal(tree->root);
     std::cout<<"\n";
-    level_order_traversal(root);
+    level_order_traversal(tree->root);
     std::cout<<"\n";
-    level_order_traversal1(root);
-    std::cout<<"\n";
-    release_tree(root);
+    // level_order_traversal1(tree->root);
+    // std::cout<<"\n";
+    std::cout<<"-----------------------------\n"; 
+     
+    bst_release_tree(tree);
 
     return argc;
 }
