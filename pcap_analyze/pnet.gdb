@@ -89,12 +89,65 @@ define p_tcp
         $src_port, $dst_port, $seq, $ask
 end
 
+define info_tcp_frame
+    if $argc < 1
+        printf "Usage: info_tcp_frame <error>\n"
+        return
+    end
+    set $dst_offset = 0
+    set $src_offset = 6
+    set $type_offset = 12
+
+    printf "MAC:[%02X:%02X:%02X:%02X:%02X:%02X]->[%02X:%02X:%02X:%02X:%02X:%02X][0x%04x] ", \
+        *((unsigned char *)$arg0 + $src_offset), \
+        *((unsigned char *)$arg0 + $src_offset + 1), \
+        *((unsigned char *)$arg0 + $src_offset + 2), \
+        *((unsigned char *)$arg0 + $src_offset + 3), \
+        *((unsigned char *)$arg0 + $src_offset + 4), \
+        *((unsigned char *)$arg0 + $src_offset + 5), \
+        *((unsigned char *)$arg0 + $dst_offset), \
+        *((unsigned char *)$arg0 + $dst_offset + 1), \
+        *((unsigned char *)$arg0 + $dst_offset + 2), \
+        *((unsigned char *)$arg0 + $dst_offset + 3), \
+        *((unsigned char *)$arg0 + $dst_offset + 4), \
+        *((unsigned char *)$arg0 + $dst_offset + 5), \
+        *((unsigned short *)((unsigned char *)$arg0 + $type_offset))
+    # // (*((unsigned char *)((unsigned char *)$arg0 + $ip_offset) + 0))
+    set $ip_offset = 14
+
+    set $ip_hlen = ((*((unsigned char *)((unsigned char *)$arg0 + $ip_offset) + 0))&0xf) * 4
+    
+    set $ip_tlen = (*((unsigned short *)((unsigned char *)$arg0 + $ip_offset) + 1))
+    set $ip_tlen = ((($ip_tlen)&0xff) << 8) | ((($ip_tlen) & 0xff00) >> 8)
+
+    set $src_addr0 = *(((unsigned char *)$arg0) + $ip_offset + 3 * 4 + 0)
+    set $src_addr1 = *(((unsigned char *)$arg0) + $ip_offset + 3 * 4 + 1)
+    set $src_addr2 = *(((unsigned char *)$arg0) + $ip_offset + 3 * 4 + 2)
+    set $src_addr3 = *(((unsigned char *)$arg0) + $ip_offset + 3 * 4 + 3)
+    set $dst_addr0 = *(((unsigned char *)$arg0) + $ip_offset + 4 * 4 + 0)
+    set $dst_addr1 = *(((unsigned char *)$arg0) + $ip_offset + 4 * 4 + 1)
+    set $dst_addr2 = *(((unsigned char *)$arg0) + $ip_offset + 4 * 4 + 2)
+    set $dst_addr3 = *(((unsigned char *)$arg0) + $ip_offset + 4 * 4 + 3)
+    set $pro = *(((unsigned char *)$arg0) + $ip_offset + 4 * 2 + 1)
+
+    set $tcp_offset = 14 + $ip_hlen
+
+    set $src_port = (*((unsigned short *)((unsigned char *)$arg0 + $tcp_offset) + 0))
+    set $dst_port = (*((unsigned short *)((unsigned char *)$arg0 + $tcp_offset) + 1))
+    set $src_port = ((($src_port)&0xff) << 8) | ((($src_port) & 0xff00) >> 8)
+    set $dst_port = ((($dst_port)&0xff) << 8) | ((($dst_port) & 0xff00) >> 8)
+    printf "[%u] [%u.%u.%u.%u][%u]->[%u.%u.%u.%u][%u] \n", $pro, \
+        $src_addr0, $src_addr1, $src_addr2, $src_addr3, $src_port, \
+        $dst_addr0, $dst_addr1, $dst_addr2, $dst_addr3, $dst_port, 
+end
+
 b main.cpp:73
 commands
     silent
     p_mac eth_hdr
     p_ipv4 ip_hdr
     p_tcp tcp_hdr
+    info_tcp_frame eth_hdr
     c
 end 
 r
