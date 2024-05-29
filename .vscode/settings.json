@@ -53,6 +53,10 @@
         "semaphore": "cpp",
         "stop_token": "cpp",
         "thread": "cpp",
-        "*.gdb": "c"
+        "*.gdb": "c",
+        "mutex": "cpp",
+        "condition_variable": "cpp",
+        "map": "cpp",
+        "cinttypes": "cpp"
     }
 }
