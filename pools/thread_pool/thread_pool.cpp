@@ -136,7 +136,11 @@ int init_threads(sh_thread_pool *pool, int count)
             int i = 0;
             for(; i < count; ++i)
             {
-                pthread_create(pool->threads + i, &attr, thread_work, pool);
+                ret = pthread_create(pool->threads + i, &attr, thread_work, pool);
+                if(ret != 0)
+                {
+                    break;
+                }
             }
             pool->th_count = i;
             pthread_attr_destroy(&attr);
@@ -144,7 +148,10 @@ int init_threads(sh_thread_pool *pool, int count)
             {
                 return 0;
             }
-            // 销毁所有线程
+            for(int j = 0; j < i; ++j)
+            {
+                pthread_join(pool->threads[j], nullptr);
+            }
             free(pool->threads);
         }
         ret = -1;
