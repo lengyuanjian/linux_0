@@ -25,12 +25,11 @@ debug: $(DEBUGDIR) $(DEBUG_TARGET)
 # Debug  编译目标
 all: debug release  
 
-
 $(DEBUGDIR):
 	mkdir -p $(DEBUGDIR)
 
 $(DEBUGDIR)/%.o: %.cpp
-	$(CC) $(CFLAGS) -g -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP -g -c $< -o $@
 
 $(DEBUG_TARGET): $(DEBUG_OBJS)
 	$(CC) $^ $(LDFLAGS) -o $@
@@ -42,11 +41,15 @@ $(RELEASEDIR):
 	mkdir -p $(RELEASEDIR)
 
 $(RELEASEDIR)/%.o: %.cpp
-	$(CC) $(CFLAGS) -O3 -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP -O3 -c $< -o $@
 
 $(RELEASE_TARGET): $(RELEASE_OBJS)
 	$(CC) $^ $(LDFLAGS) -o $@
 
+# 包含依赖文件
+-include $(DEBUG_OBJS:.o=.d)
+-include $(RELEASE_OBJS:.o=.d)
+
 # 清理目标
 clean:
-	rm -rf obj $(DEBUG_TARGET) $(RELEASE_TARGET)
+	rm -rf obj $(DEBUG_TARGET) $(RELEASE_TARGET) $(DEBUG_OBJS:.o=.d) $(RELEASE_OBJS:.o=.d)
