@@ -5,6 +5,30 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "pools mem1",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/pools/mem_pool/app_debug",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/pools/mem_pool/",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "为 gdb 启用整齐打印",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "将反汇编风格设置为 Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
             "name": "pools thread",
             "type": "cppdbg",
             "request": "launch",
