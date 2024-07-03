@@ -67,6 +67,11 @@ static const char sys_dir_path[] = "/sys/kernel/mm/hugepages";
 
 #include "mem.h"
 
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
 int main(int argc, char *argv[])
 {
 	printf("%s\n", argv[0]);
@@ -103,6 +108,27 @@ int main(int argc, char *argv[])
 		printf("getname[%s][%lu]\n",name,num_pages);
     }
  
+	size_t length = 6 * 1024 * 1024; // 2 MB
+
+    // 使用 mmap 分配大页内存
+    void *ptr = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+    if (ptr == MAP_FAILED) {
+        fprintf(stderr, "mmap failed: %s\n", strerror(errno));
+        return 1;
+    }
+
+    // 使用分配的内存
+    unsigned char *arr = (unsigned char *)ptr;
+    arr[0] = 42;
+	arr[1024 * 1024 * 2] = 42;
+    printf("Value: %u\n", arr[0]);
+	while(1)
+	{;}
+    // 释放内存
+    if (munmap(ptr, length) == -1) {
+        fprintf(stderr, "munmap failed: %s\n", strerror(errno));
+        return 1;
+    }
 
 
 	return argc;
