@@ -1,6 +1,7 @@
 #ifndef _EAL_LCORE_H_
 #define _EAL_LCORE_H_
 
+
 #ifdef __cplusplus
 extern "C" {
 #endif

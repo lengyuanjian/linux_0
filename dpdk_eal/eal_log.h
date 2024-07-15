@@ -1,5 +1,5 @@
-#ifndef _SH_LOG_H_
-#define _SH_LOG_H_
+#ifndef _EAL_LOG_H_
+#define _EAL_LOG_H_
 #include <stdio.h>
 #include <stdlib.h>
 
