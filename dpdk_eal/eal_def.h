@@ -28,6 +28,7 @@ extern "C" {
 extern struct eal_config _eal_config;
 
 extern int eal_cpu_init(void);
+
 extern void printf_eal_config(struct eal_config * p_config);
 
 #ifdef __cplusplus
