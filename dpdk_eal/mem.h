@@ -14,6 +14,7 @@
 struct hugepage_info {
 	uint64_t hugepage_sz;   /**< size of a huge page */
 	char hugedir[PATH_MAX];    /**< dir where hugetlbfs is mounted */
+	uint32_t numa_node_count;
 	uint32_t num_pages[RTE_MAX_NUMA_NODES];
 	/**< number of hugepages of that size on each socket */
 	int lock_descriptor;    /**< file descriptor for hugepage dir */
@@ -32,6 +33,9 @@ extern "C" {
 #endif
 
 extern struct hugepage_conf mem_conf;
+
+extern int hugepage_info_init(void);
+extern int printf_mem_conf(struct hugepage_conf * p_mem_conf);
 
 #ifdef __cplusplus
 }

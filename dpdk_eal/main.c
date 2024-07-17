@@ -3,6 +3,7 @@
 #include "eal_def.h"
 #include "eal_log.h"
 #include "eal_lcore.h"
+#include "mem.h"
 int main() 
 {
     RTE_LOG(ERR, EAL, "Detected lcore %u as \n", 5);
@@ -20,5 +21,8 @@ int main()
     // }
     eal_cpu_init();
     printf_eal_config(&_eal_config);
+
+    hugepage_info_init();
+    printf_mem_conf(&mem_conf);
     return 0;
 }

@@ -29,7 +29,13 @@ extern struct eal_config _eal_config;
 
 extern int eal_cpu_init(void);
 
+extern unsigned int rte_socket_count();
+
+extern int rte_socket_id_by_idx(unsigned int idx);
+
 extern void printf_eal_config(struct eal_config * p_config);
+
+
 
 #ifdef __cplusplus
 }

@@ -64,6 +64,21 @@ eal_cpu_init(void)
     
     return 0;
 }
+
+unsigned int rte_socket_count()
+{
+    return _eal_config.numa_node_count;
+}
+
+int rte_socket_id_by_idx(unsigned int idx)
+{
+    if (idx >= _eal_config.numa_node_count) 
+    {
+		return -1;
+	}
+	return _eal_config.numa_nodes[idx];
+}
+
 #include <stdio.h>
 void printf_eal_config(struct eal_config * p_config)
 {
