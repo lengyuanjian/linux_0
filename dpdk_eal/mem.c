@@ -13,389 +13,367 @@
 #include <errno.h>
 #include "../inc/sh_unistd.h"
 #include "eal_log.h"
+#include "mem_hugepage.h"
 
-static const char sys_dir_path[] = "/sys/kernel/mm/hugepages";
-static const char sys_pages_numa_dir_path[] = "/sys/devices/system/node";
+#define PFN_MASK_SIZE	8
 
-struct hugepage_conf mem_conf;
+static bool phys_addrs_available = true;
 
-int printf_mem_conf(struct hugepage_conf *p_mem_conf) 
+#define RANDOMIZE_VA_SPACE_FILE "/proc/sys/kernel/randomize_va_space"
+
+enum rte_iova_mode rte_eal_iova_mode(void)
 {
-    if (p_mem_conf == NULL) {
-        return -1; 
-    }
-
-    printf("Hugefile Prefix: %s\n", p_mem_conf->hugefile_prefix);
-    printf("Hugepage Directory: %s\n", p_mem_conf->hugepage_dir);
-    printf("Number of Hugepage Sizes: %u\n", p_mem_conf->num_hugepage_sizes);
-
-    for (unsigned i = 0; i < p_mem_conf->num_hugepage_sizes; ++i) {
-        struct hugepage_info *info = &p_mem_conf->hugepage_info[i];
-        printf("Hugepage Size %u: %lu\n", i, info->hugepage_sz);
-        printf("Hugepage Directory: %s\n", info->hugedir);
-        printf("Number of Pages per NUMA Node:\n");
-        for (unsigned j = 0; j < info->numa_node_count; ++j) {
-            printf("  Node %u: %u pages\n", j, info->num_pages[j]);
-        }
-        printf("Lock Descriptor: %d\n", info->lock_descriptor);
-    }
-
-    return 0;
+	return RTE_IOVA_PA;
 }
-
-static uint64_t
-get_default_hp_size(void)
+static void
+test_phys_addrs_available(void)
 {
-	const char proc_meminfo[] = "/proc/meminfo";
-	const char str_hugepagesz[] = "Hugepagesize:";
-	unsigned hugepagesz_len = sizeof(str_hugepagesz) - 1;
-	char buffer[256];
-	unsigned long long size = 0;
+	uint64_t tmp = 0;
+	phys_addr_t physaddr;
 
-	FILE *fd = fopen(proc_meminfo, "r");
-	if (fd == NULL)
-		rte_panic("Cannot open %s\n", proc_meminfo);
-	while(fgets(buffer, sizeof(buffer), fd)){
-		if (strncmp(buffer, str_hugepagesz, hugepagesz_len) == 0){
-			size = rte_str_to_size(&buffer[hugepagesz_len]);
-			break;
+	// if (!rte_eal_has_hugepages()) {
+	// 	RTE_LOG(ERR, EAL,
+	// 		"Started without hugepages support, physical addresses not available\n");
+	// 	phys_addrs_available = false;
+	// 	return;
+	// }
+
+	physaddr = rte_mem_virt2phy(&tmp);
+	if (physaddr == RTE_BAD_PHYS_ADDR) {
+		if (rte_eal_iova_mode() == RTE_IOVA_PA)
+		{
+			RTE_LOG(ERR, EAL, "Cannot obtain physical addresses: %s. "
+				"Only vfio will function.\n", strerror(errno));
 		}
+		phys_addrs_available = false;
 	}
-	fclose(fd);
-	if (size == 0)
-		rte_panic("Cannot get default hugepage size from %s\n", proc_meminfo);
-	return size;
 }
 
-static int
-get_hugepage_dir(uint64_t hugepage_sz, char *hugedir, int len)
+/*
+ * Get physical address of any mapped virtual address in the current process.
+ */
+phys_addr_t
+rte_mem_virt2phy(const void *virtaddr)
 {
-	enum proc_mount_fieldnames {
-		DEVICE = 0,
-		MOUNTPT,
-		FSTYPE,
-		OPTIONS,
-		_FIELDNAME_MAX
-	};
-	static uint64_t default_size = 0;
-	const char proc_mounts[] = "/proc/mounts";
-	const char hugetlbfs_str[] = "hugetlbfs";
-	const size_t htlbfs_str_len = sizeof(hugetlbfs_str) - 1;
-	const char pagesize_opt[] = "pagesize=";
-	const size_t pagesize_opt_len = sizeof(pagesize_opt) - 1;
-	const char split_tok = ' ';
-	char *splitstr[_FIELDNAME_MAX];
-	char buf[BUFSIZ];
-	int retval = -1;
+	int fd, retval;
+	uint64_t page, physaddr;
+	unsigned long virt_pfn;
+	int page_size;
+	off_t offset;
 
-	FILE *fd = fopen(proc_mounts, "r");
-	if (fd == NULL)
-		rte_panic("Cannot open %s\n", proc_mounts);
+	/* Cannot parse /proc/self/pagemap, no need to log errors everywhere */
+	if (!phys_addrs_available)
+		return RTE_BAD_IOVA;
 
-	if (default_size == 0)
-		default_size = get_default_hp_size();
+	/* standard page size */
+	page_size = getpagesize();
 
-	while (fgets(buf, sizeof(buf), fd)){
-		if (rte_strsplit(buf, sizeof(buf), splitstr, _FIELDNAME_MAX,
-				split_tok) != _FIELDNAME_MAX) {
-			RTE_LOG(ERR, EAL, "Error parsing %s\n", proc_mounts);
-			break; /* return NULL */
-		}
-
-		// /* we have a specified --huge-dir option, only examine that dir */
-		// if (internal_config.hugepage_dir != NULL &&
-		// 		strcmp(splitstr[MOUNTPT], internal_config.hugepage_dir) != 0)
-		// 	continue;
-
-		if (strncmp(splitstr[FSTYPE], hugetlbfs_str, htlbfs_str_len) == 0){
-			const char *pagesz_str = strstr(splitstr[OPTIONS], pagesize_opt);
-
-			/* if no explicit page size, the default page size is compared */
-			if (pagesz_str == NULL){
-				if (hugepage_sz == default_size){
-					strlcpy(hugedir, splitstr[MOUNTPT], len);
-					retval = 0;
-					break;
-				}
-			}
-			/* there is an explicit page size, so check it */
-			else {
-				uint64_t pagesz = rte_str_to_size(&pagesz_str[pagesize_opt_len]);
-				if (pagesz == hugepage_sz) {
-					strlcpy(hugedir, splitstr[MOUNTPT], len);
-					retval = 0;
-					break;
-				}
-			}
-		} /* end if strncmp hugetlbfs */
-	} /* end while fgets */
-
-	fclose(fd);
-	return retval;
-}
-
-static uint32_t
-get_num_hugepages(const char *subdir)
-{
-	char path[PATH_MAX];
-	long unsigned resv_pages, num_pages = 0;
-	const char *nr_hp_file = "free_hugepages";
-	const char *nr_rsvd_file = "resv_hugepages";
-
-	/* first, check how many reserved pages kernel reports */
-	snprintf(path, sizeof(path), "%s/%s/%s",
-			sys_dir_path, subdir, nr_rsvd_file);
-	if (eal_parse_sysfs_value(path, &resv_pages) < 0)
-		return 0;
-
-	snprintf(path, sizeof(path), "%s/%s/%s",
-			sys_dir_path, subdir, nr_hp_file);
-	if (eal_parse_sysfs_value(path, &num_pages) < 0)
-		return 0;
-
-	if (num_pages == 0)
-		RTE_LOG(WARNING, EAL, "No free hugepages reported in %s\n",
-				subdir);
-
-	/* adjust num_pages */
-	if (num_pages >= resv_pages)
-		num_pages -= resv_pages;
-	else if (resv_pages)
-		num_pages = 0;
-
-	/* we want to return a uint32_t and more than this looks suspicious
-	 * anyway ... */
-	if (num_pages > UINT32_MAX)
-		num_pages = UINT32_MAX;
-
-	return num_pages;
-}
-
-
-static int
-clear_hugedir(const char * hugedir)
-{
-	DIR *dir;
-	struct dirent *dirent;
-	int dir_fd, fd, lck_result;
-	const char filter[] = "*map_*"; /* matches hugepage files */
-
-	/* open directory */
-	dir = opendir(hugedir);
-	if (!dir) {
-		RTE_LOG(ERR, EAL, "Unable to open hugepage directory %s\n",
-				hugedir);
-		goto error;
-	}
-	dir_fd = dirfd(dir);
-
-	dirent = readdir(dir);
-	if (!dirent) {
-		RTE_LOG(ERR, EAL, "Unable to read hugepage directory %s\n",
-				hugedir);
-		goto error;
+	fd = open("/proc/self/pagemap", O_RDONLY);
+	if (fd < 0) {
+		RTE_LOG(ERR, EAL, "%s(): cannot open /proc/self/pagemap: %s\n",
+			__func__, strerror(errno));
+		return RTE_BAD_IOVA;
 	}
 
-	while(dirent != NULL){
-		/* skip files that don't match the hugepage pattern */
-		if (fnmatch(filter, dirent->d_name, 0) > 0) {
-			dirent = readdir(dir);
-			continue;
-		}
-
-		/* try and lock the file */
-		fd = openat(dir_fd, dirent->d_name, O_RDONLY);
-
-		/* skip to next file */
-		if (fd == -1) {
-			dirent = readdir(dir);
-			continue;
-		}
-
-		/* non-blocking lock */
-		lck_result = flock(fd, LOCK_EX | LOCK_NB);
-
-		/* if lock succeeds, remove the file */
-		if (lck_result != -1)
-			unlinkat(dir_fd, dirent->d_name, 0);
-		close (fd);
-		dirent = readdir(dir);
+	virt_pfn = (unsigned long)virtaddr / page_size;
+	offset = sizeof(uint64_t) * virt_pfn;
+	if (lseek(fd, offset, SEEK_SET) == (off_t) -1) {
+		RTE_LOG(ERR, EAL, "%s(): seek error in /proc/self/pagemap: %s\n",
+				__func__, strerror(errno));
+		close(fd);
+		return RTE_BAD_IOVA;
 	}
 
-	closedir(dir);
-	return 0;
-
-error:
-	if (dir)
-		closedir(dir);
-
-	RTE_LOG(ERR, EAL, "Error while clearing hugepage dir: %s\n",
-		strerror(errno));
-
-	return -1;
-}
-
-static int
-compare_hpi(const void *a, const void *b)
-{
-	const struct hugepage_info *hpi_a = a;
-	const struct hugepage_info *hpi_b = b;
-
-	return hpi_b->hugepage_sz - hpi_a->hugepage_sz;
-}
-
-static uint32_t
-get_num_hugepages_on_node(const char *subdir, unsigned int socket)
-{
-	char path[PATH_MAX * 3], socketpath[PATH_MAX];
-	DIR *socketdir;
-	unsigned long num_pages = 0;
-	const char *nr_hp_file = "free_hugepages";
-
-	snprintf(socketpath, sizeof(socketpath), "%s/node%u/hugepages",
-		sys_pages_numa_dir_path, socket);
-
-	socketdir = opendir(socketpath);
-	if (socketdir) {
-		/* Keep calm and carry on */
-		closedir(socketdir);
-	} else {
-		/* Can't find socket dir, so ignore it */
-		return 0;
+	retval = read(fd, &page, PFN_MASK_SIZE);
+	close(fd);
+	if (retval < 0) {
+		RTE_LOG(ERR, EAL, "%s(): cannot read /proc/self/pagemap: %s\n",
+				__func__, strerror(errno));
+		return RTE_BAD_IOVA;
+	} else if (retval != PFN_MASK_SIZE) {
+		RTE_LOG(ERR, EAL, "%s(): read %d bytes from /proc/self/pagemap "
+				"but expected %d:\n",
+				__func__, retval, PFN_MASK_SIZE);
+		return RTE_BAD_IOVA;
 	}
-
-	snprintf(path, sizeof(path), "%s/%s/%s",
-			socketpath, subdir, nr_hp_file);
-	if (eal_parse_sysfs_value(path, &num_pages) < 0)
-		return 0;
-
-	if (num_pages == 0)
-		RTE_LOG(WARNING, EAL, "No free hugepages reported in %s\n",
-				subdir);
 
 	/*
-	 * we want to return a uint32_t and more than this looks suspicious
-	 * anyway ...
+	 * the pfn (page frame number) are bits 0-54 (see
+	 * pagemap.txt in linux Documentation)
 	 */
-	if (num_pages > UINT32_MAX)
-		num_pages = UINT32_MAX;
+	if ((page & 0x7fffffffffffffULL) == 0)
+		return RTE_BAD_IOVA;
 
-	return num_pages;
+	physaddr = ((page & 0x7fffffffffffffULL) * page_size)
+		+ ((unsigned long)virtaddr % page_size);
+
+	return physaddr;
 }
 
-int hugepage_info_init(void)
-{	const char dirent_start_text[] = "hugepages-";
-	const size_t dirent_start_len = sizeof(dirent_start_text) - 1;
-	unsigned int i, total_pages, num_sizes = 0;
-	DIR *dir;
-	struct dirent *dirent;
+rte_iova_t
+rte_mem_virt2iova(const void *virtaddr)
+{
+	if (rte_eal_iova_mode() == RTE_IOVA_VA)
+		return (uintptr_t)virtaddr;
+	return rte_mem_virt2phy(virtaddr);
+}
 
-	dir = opendir(sys_dir_path);
-	if (dir == NULL) {
-		RTE_LOG(ERR, EAL,
-			"Cannot open directory %s to read system hugepage info\n",
-			sys_dir_path);
+/*
+ * For each hugepage in hugepg_tbl, fill the physaddr value. We find
+ * it by browsing the /proc/self/pagemap special file.
+ */
+static int
+find_physaddrs(struct hugepage_file *hugepg_tbl, struct hugepage_info *hpi)
+{
+	unsigned int i;
+	phys_addr_t addr;
+
+	for (i = 0; i < hpi->num_pages[0]; i++) {
+		addr = rte_mem_virt2phy(hugepg_tbl[i].orig_va);
+		if (addr == RTE_BAD_PHYS_ADDR)
+			return -1;
+		hugepg_tbl[i].physaddr = addr;
+	}
+	return 0;
+}
+
+/*
+ * For each hugepage in hugepg_tbl, fill the physaddr value sequentially.
+ */
+static int
+set_physaddrs(struct hugepage_file *hugepg_tbl, struct hugepage_info *hpi)
+{
+	unsigned int i;
+	static phys_addr_t addr;
+
+	for (i = 0; i < hpi->num_pages[0]; i++) {
+		hugepg_tbl[i].physaddr = addr;
+		addr += hugepg_tbl[i].size;
+	}
+	return 0;
+}
+
+
+static int
+calc_num_pages_per_socket(uint64_t * memory,
+		struct hugepage_info *hp_info,
+		struct hugepage_info *hp_used,
+		unsigned num_hp_info)
+{
+	unsigned socket, j, i = 0;
+	unsigned requested, available;
+	int total_num_pages = 0;
+	uint64_t remaining_mem, cur_mem;
+	uint64_t total_mem = internal_config.memory;
+
+	if (num_hp_info == 0)
 		return -1;
+
+	/* if specific memory amounts per socket weren't requested */
+	if (internal_config.force_sockets == 0) {
+		size_t total_size;
+#ifdef RTE_ARCH_64
+		int cpu_per_socket[RTE_MAX_NUMA_NODES];
+		size_t default_size;
+		unsigned lcore_id;
+
+		/* Compute number of cores per socket */
+		memset(cpu_per_socket, 0, sizeof(cpu_per_socket));
+		RTE_LCORE_FOREACH(lcore_id) {
+			cpu_per_socket[rte_lcore_to_socket_id(lcore_id)]++;
+		}
+
+		/*
+		 * Automatically spread requested memory amongst detected sockets according
+		 * to number of cores from cpu mask present on each socket
+		 */
+		total_size = internal_config.memory;
+		for (socket = 0; socket < RTE_MAX_NUMA_NODES && total_size != 0; socket++) {
+
+			/* Set memory amount per socket */
+			default_size = (internal_config.memory * cpu_per_socket[socket])
+					/ rte_lcore_count();
+
+			/* Limit to maximum available memory on socket */
+			default_size = RTE_MIN(default_size, get_socket_mem_size(socket));
+
+			/* Update sizes */
+			memory[socket] = default_size;
+			total_size -= default_size;
+		}
+
+		/*
+		 * If some memory is remaining, try to allocate it by getting all
+		 * available memory from sockets, one after the other
+		 */
+		for (socket = 0; socket < RTE_MAX_NUMA_NODES && total_size != 0; socket++) {
+			/* take whatever is available */
+			default_size = RTE_MIN(get_socket_mem_size(socket) - memory[socket],
+					       total_size);
+
+			/* Update sizes */
+			memory[socket] += default_size;
+			total_size -= default_size;
+		}
+#else
+		/* in 32-bit mode, allocate all of the memory only on master
+		 * lcore socket
+		 */
+		total_size = internal_config.memory;
+		for (socket = 0; socket < RTE_MAX_NUMA_NODES && total_size != 0;
+				socket++) {
+			struct rte_config *cfg = rte_eal_get_configuration();
+			unsigned int master_lcore_socket;
+
+			master_lcore_socket =
+				rte_lcore_to_socket_id(cfg->master_lcore);
+
+			if (master_lcore_socket != socket)
+				continue;
+
+			/* Update sizes */
+			memory[socket] = total_size;
+			break;
+		}
+#endif
 	}
 
-	for (dirent = readdir(dir); dirent != NULL; dirent = readdir(dir)) 
-    {
+	for (socket = 0; socket < RTE_MAX_NUMA_NODES && total_mem != 0; socket++) {
+		/* skips if the memory on specific socket wasn't requested */
+		for (i = 0; i < num_hp_info && memory[socket] != 0; i++){
+			strlcpy(hp_used[i].hugedir, hp_info[i].hugedir,
+				sizeof(hp_used[i].hugedir));
+			hp_used[i].num_pages[socket] = RTE_MIN(
+					memory[socket] / hp_info[i].hugepage_sz,
+					hp_info[i].num_pages[socket]);
+
+			cur_mem = hp_used[i].num_pages[socket] *
+					hp_used[i].hugepage_sz;
+
+			memory[socket] -= cur_mem;
+			total_mem -= cur_mem;
+
+			total_num_pages += hp_used[i].num_pages[socket];
+
+			/* check if we have met all memory requests */
+			if (memory[socket] == 0)
+				break;
+
+			/* check if we have any more pages left at this size, if so
+			 * move on to next size */
+			if (hp_used[i].num_pages[socket] == hp_info[i].num_pages[socket])
+				continue;
+			/* At this point we know that there are more pages available that are
+			 * bigger than the memory we want, so lets see if we can get enough
+			 * from other page sizes.
+			 */
+			remaining_mem = 0;
+			for (j = i+1; j < num_hp_info; j++)
+				remaining_mem += hp_info[j].hugepage_sz *
+				hp_info[j].num_pages[socket];
+
+			/* is there enough other memory, if not allocate another page and quit */
+			if (remaining_mem < memory[socket]){
+				cur_mem = RTE_MIN(memory[socket],
+						hp_info[i].hugepage_sz);
+				memory[socket] -= cur_mem;
+				total_mem -= cur_mem;
+				hp_used[i].num_pages[socket]++;
+				total_num_pages++;
+				break; /* we are done with this socket*/
+			}
+		}
+		/* if we didn't satisfy all memory requirements per socket */
+		if (memory[socket] > 0 &&
+				internal_config.socket_mem[socket] != 0) {
+			/* to prevent icc errors */
+			requested = (unsigned) (internal_config.socket_mem[socket] /
+					0x100000);
+			available = requested -
+					((unsigned) (memory[socket] / 0x100000));
+			RTE_LOG(ERR, EAL, "Not enough memory available on socket %u! "
+					"Requested: %uMB, available: %uMB\n", socket,
+					requested, available);
+			return -1;
+		}
+	}
+
+	/* if we didn't satisfy total memory requirements */
+	if (total_mem > 0) {
+		requested = (unsigned) (internal_config.memory / 0x100000);
+		available = requested - (unsigned) (total_mem / 0x100000);
+		RTE_LOG(ERR, EAL, "Not enough memory available! Requested: %uMB,"
+				" available: %uMB\n", requested, available);
+		return -1;
+	}
+	return total_num_pages;
+}
+
+
+static int
+eal_hugepage_init(void)
+{
+	struct hugepage_info used_hp[MAX_HUGEPAGE_SIZES];
+	uint64_t memory[RTE_MAX_NUMA_NODES];
+	int hp_sz_idx, socket_id;
+
+	test_phys_addrs_available();
+
+	memset(used_hp, 0, sizeof(used_hp));
+
+	for (hp_sz_idx = 0; hp_sz_idx < (int) mem_hugepage_conf.num_hugepage_sizes; hp_sz_idx++) 
+	{
+
+		/* also initialize used_hp hugepage sizes in used_hp */
 		struct hugepage_info *hpi;
+		hpi = &mem_hugepage_conf.hugepage_info[hp_sz_idx];
+		used_hp[hp_sz_idx].hugepage_sz = hpi->hugepage_sz;
 
-		if (strncmp(dirent->d_name, dirent_start_text, dirent_start_len) != 0)
-			continue;
 
-		if (num_sizes >= MAX_HUGEPAGE_SIZES)
-			break;
-
-		hpi = &mem_conf.hugepage_info[num_sizes];
-		hpi->hugepage_sz = rte_str_to_size(&dirent->d_name[dirent_start_len]);
-
-		/* first, check if we have a mountpoint */
-		if (get_hugepage_dir(hpi->hugepage_sz, hpi->hugedir, sizeof(hpi->hugedir)) < 0) 
-        {
-			uint32_t num_pages;
-
-			num_pages = get_num_hugepages(dirent->d_name);
-			if (num_pages > 0)
-            {
-				RTE_LOG(NOTICE, EAL,
-					"%" PRIu32 " hugepages of size "
-					"%" PRIu64 " reserved, but no mounted "
-					"hugetlbfs found for that size\n",
-					num_pages, hpi->hugepage_sz);
-            }
-			continue;
-		}
-
-		/* try to obtain a writelock */
-		hpi->lock_descriptor = open(hpi->hugedir, O_RDONLY);
-
-		/* if blocking lock failed */
-		if (flock(hpi->lock_descriptor, LOCK_EX) == -1) 
-        {
-			RTE_LOG(CRIT, EAL,
-				"Failed to lock hugepage directory!\n");
-			break;
-		}
-		/* clear out the hugepages dir from unused pages */
-		if (clear_hugedir(hpi->hugedir) == -1)
-			break;
-
-		/*
-		 * first, try to put all hugepages into relevant sockets, but
-		 * if first attempts fails, fall back to collecting all pages
-		 * in one socket and sorting them later
-		 */
-		total_pages = 0;
-		/* we also don't want to do this for legacy init */
-		//if (!internal_config.legacy_mem)
-        hpi->numa_node_count = rte_socket_count();
-		for (i = 0; i < hpi->numa_node_count; i++) 
-        {
-            int socket = rte_socket_id_by_idx(i);
-            if(socket == -1)
-            {
-                RTE_LOG(ERR, EAL, "socket select failed! id:%d\n", i);
-            }
-            unsigned int num_pages = get_num_hugepages_on_node(dirent->d_name, socket);
-            hpi->num_pages[socket] = num_pages;
-            total_pages += num_pages;
-		}
-		/*
-		 * we failed to sort memory from the get go, so fall
-		 * back to old way
-		 */
-		if (total_pages == 0)
-			hpi->num_pages[0] = get_num_hugepages(dirent->d_name);
-
-		num_sizes++;
 	}
-	closedir(dir);
 
-	/* something went wrong, and we broke from the for loop above */
-	if (dirent != NULL)
+	// /* make a copy of socket_mem, needed for balanced allocation. */
+	// for (hp_sz_idx = 0; hp_sz_idx < RTE_MAX_NUMA_NODES; hp_sz_idx++)
+	// 	memory[hp_sz_idx] = internal_config.socket_mem[hp_sz_idx];
+
+	/* calculate final number of pages */
+	if (calc_num_pages_per_socket(memory, mem_hugepage_conf.hugepage_info, used_hp, mem_hugepage_conf.num_hugepage_sizes) < 0)
 		return -1;
 
-	mem_conf.num_hugepage_sizes = num_sizes;
+	for (hp_sz_idx = 0; hp_sz_idx < (int)mem_hugepage_conf.num_hugepage_sizes; hp_sz_idx++) 
+	{
+		for (socket_id = 0; socket_id < RTE_MAX_NUMA_NODES;	socket_id++) 
+		{
+			struct rte_memseg **pages;
+			struct hugepage_info *hpi = &used_hp[hp_sz_idx];
+			unsigned int num_pages = hpi->num_pages[socket_id];
+			int num_pages_alloc, i;
 
-	/* sort the page directory entries by size, largest to smallest */
-	qsort(&mem_conf.hugepage_info[0], num_sizes,
-	      sizeof(mem_conf.hugepage_info[0]), compare_hpi);
+			if (num_pages == 0)
+				continue;
 
-	/* now we have all info, check we have at least one valid size */
-	for (i = 0; i < num_sizes; i++) {
-		/* pages may no longer all be on socket 0, so check all */
-		unsigned int j, num_pages = 0;
-		struct hugepage_info *hpi = &mem_conf.hugepage_info[i];
+			pages = malloc(sizeof(*pages) * num_pages);
 
-		for (j = 0; j < RTE_MAX_NUMA_NODES; j++)
-			num_pages += hpi->num_pages[j];
-		if (strnlen(hpi->hugedir, sizeof(hpi->hugedir)) != 0 &&
-				num_pages > 0)
-			return 0;
+			RTE_LOG(DEBUG, EAL, "Allocating %u pages of size %" PRIu64 "M on socket %i\n",
+				num_pages, hpi->hugepage_sz >> 20, socket_id);
+
+			num_pages_alloc = eal_memalloc_alloc_seg_bulk(pages,
+					num_pages, hpi->hugepage_sz,
+					socket_id, true);
+			if (num_pages_alloc < 0) 
+			{
+				free(pages);
+				return -1;
+			}
+
+			/* mark preallocated pages as unfreeable */
+			for (i = 0; i < num_pages_alloc; i++) 
+			{
+				struct rte_memseg *ms = pages[i];
+				ms->flags |= RTE_MEMSEG_FLAG_DO_NOT_FREE;
+			}
+			free(pages);
+		}
 	}
-
-	/* no valid hugepage mounts available, return error */
-	return -1;
+	return 0;
 }

@@ -1,0 +1,62 @@
+[
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-std=gnu11",
+      "-c",
+      "-o",
+      "obj/eal.o",
+      "eal.c"
+    ],
+    "directory": "/root/linux_0/dpdk_eal",
+    "file": "/root/linux_0/dpdk_eal/eal.c",
+    "output": "/root/linux_0/dpdk_eal/obj/eal.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-std=gnu11",
+      "-c",
+      "-o",
+      "obj/eal_lcore.o",
+      "eal_lcore.c"
+    ],
+    "directory": "/root/linux_0/dpdk_eal",
+    "file": "/root/linux_0/dpdk_eal/eal_lcore.c",
+    "output": "/root/linux_0/dpdk_eal/obj/eal_lcore.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-std=gnu11",
+      "-c",
+      "-o",
+      "obj/main.o",
+      "main.c"
+    ],
+    "directory": "/root/linux_0/dpdk_eal",
+    "file": "/root/linux_0/dpdk_eal/main.c",
+    "output": "/root/linux_0/dpdk_eal/obj/main.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/gcc",
+      "-g",
+      "-Wall",
+      "-std=gnu11",
+      "-c",
+      "-o",
+      "obj/mem.o",
+      "mem.c"
+    ],
+    "directory": "/root/linux_0/dpdk_eal",
+    "file": "/root/linux_0/dpdk_eal/mem.c",
+    "output": "/root/linux_0/dpdk_eal/obj/mem.o"
+  }
+]

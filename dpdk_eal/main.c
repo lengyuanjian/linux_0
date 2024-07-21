@@ -4,6 +4,7 @@
 #include "eal_log.h"
 #include "eal_lcore.h"
 #include "mem.h"
+#include "mem_hugepage.h"
 int main() 
 {
     RTE_LOG(ERR, EAL, "Detected lcore %u as \n", 5);
@@ -23,6 +24,6 @@ int main()
     printf_eal_config(&_eal_config);
 
     hugepage_info_init();
-    printf_mem_conf(&mem_conf);
+    printf_mem_conf(&mem_hugepage_conf);
     return 0;
 }
