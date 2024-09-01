@@ -1,0 +1,43 @@
+[
+    {
+        "arguments": [
+            "cc",
+            "-c",
+            "-g",
+            "-Wall",
+            "-Wextra",
+            "-Wno-unused-parameter",
+            "-Wno-missing-field-initializers",
+            "-Wmissing-declarations",
+            "-fno-strict-aliasing",
+            "-I/home/spdk/include",
+            "-march=native",
+            "-mno-avx512f",
+            "-Wformat",
+            "-Wformat-security",
+            "-D_GNU_SOURCE",
+            "-fPIC",
+            "-fstack-protector",
+            "-fno-common",
+            "-I/home/spdk/isa-l/..",
+            "-I/home/spdk/isalbuild",
+            "-I/home/spdk/isa-l-crypto/..",
+            "-I/home/spdk/isalcryptobuild",
+            "-DNDEBUG",
+            "-O2",
+            "-U_FORTIFY_SOURCE",
+            "-D_FORTIFY_SOURCE=2",
+            "-DSPDK_GIT_COMMIT=78467a355",
+            "-pthread",
+            "-Wno-pointer-sign",
+            "-Wstrict-prototypes",
+            "-Wold-style-definition",
+            "-std=gnu11",
+            "-o",
+            "hello_blob.o",
+            "hello_blob.c"
+        ],
+        "directory": "/home/spdk/examples/blob/hello_world_bak",
+        "file": "hello_blob.c"
+    }
+]
