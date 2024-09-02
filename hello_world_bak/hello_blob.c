@@ -3,15 +3,17 @@
 #include "spdk/log.h"
 #include <stdio.h>
 #include <spdk/init.h>
+#include <spdk/bdev.h>
 
 // 任务的回调函数
 
 bool waiter(struct spdk_thread *thread, spdk_msg_fn fun, void *arg,  int * finished);
 
-struct context
+struct context_t
 {
-    bool finish;
-};
+    struct spdk_bs_dev *bs_dev;
+    int finish;
+} context={NULL};
 
 bool waiter(struct spdk_thread *thread, spdk_msg_fn fun, void *arg,  int * finished)
 {
@@ -54,35 +56,49 @@ void fun_json_load(void *arg)
 
 static void base_bdev_event_cb(enum spdk_bdev_event_type type, struct spdk_bdev *bdev, void *event_ctx)
 {
-	SPDK_WARNLOG("Unsupported bdev event: type %d\n", type);
-	SPDK_NOTICELOG("Unsupported bdev event: type %d\n", type);
+	SPDK_WARNLOG("Unsupported bdev event: type %d\n", (int)type);
+	SPDK_NOTICELOG("Unsupported bdev event: type %d\n", (int)type);
 }
-static void bs_init_complete(void *cb_arg, struct spdk_blob_store *bs, int bserrno)
+static void bs_init_complete(void *arg, struct spdk_blob_store *bs, int bserrno)
 {
-	struct hello_context_t *hello_context = cb_arg;
+	struct context_t * p_context = (struct context_t *)arg;
 
+        printf("bs_init_complete[%d]\n", bserrno);
+    if (bserrno == 0) 
+    {
+         
+        p_context->finish = 0;
+    } 
+    else 
+    {
+        p_context->finish = 1;
+        printf("加载失败，错误码: %d\n", bserrno);
+    }
 	SPDK_NOTICELOG("entry\n");
 	if (bserrno) 
 	{
-		unload_bs(hello_context, "Error initing the blobstore", bserrno);
+		printf("hello_context, Error initing the blobstore[%d]\n", bserrno);
 		return;
 	}
+    else
+    {
+    }
 
-	hello_context->bs = bs;
-	SPDK_NOTICELOG("blobstore: %p\n", hello_context->bs);
+	//hello_context->bs = bs;
+	//SPDK_NOTICELOG("blobstore: %p\n", hello_context->bs);
 	/*
 	 * We will use the io_unit size in allocating buffers, etc., later
 	 * so we'll just save it in out context buffer here.
 	 */
-	hello_context->io_unit_size = spdk_bs_get_io_unit_size(hello_context->bs);
+	printf("spdk_bs_get_io_unit_size%u\n",spdk_bs_get_io_unit_size(bs));
 
-	/*
-	 * The blobstore has been initialized, let's create a blob.
-	 * Note that we could pass a message back to ourselves using
-	 * spdk_thread_send_msg() if we wanted to keep our processing
-	 * time limited.
-	 */
-	create_blob(hello_context);
+	//create_blob(hello_context);
+}
+
+void fun_bs_init(void *arg)
+{
+    struct context_t * p_context = (struct context_t *)arg;
+    spdk_bs_init(p_context->bs_dev, NULL, bs_init_complete, arg);
 }
 
 // 主程序入口
@@ -98,6 +114,10 @@ int main(int argc, char **argv)
         SPDK_ERRLOG("Unable to initialize SPDK env\n");
         return -1;
     }
+    spdk_log_set_print_level(SPDK_LOG_NOTICE);
+	spdk_log_set_level(SPDK_LOG_NOTICE);
+	spdk_log_open(NULL);
+
     pthread_t thread_id = pthread_self();
     printf("POSIX Thread ID: %lu\n", (unsigned long)thread_id);
 
@@ -130,8 +150,21 @@ int main(int argc, char **argv)
 		spdk_app_stop(-1);
 		return 0;
 	}
-
-	spdk_bs_init(bs_dev, NULL, bs_init_complete, hello_context);
+    else
+    {
+        printf("create bs dev ext\n");
+    }
+    context.bs_dev = bs_dev;
+    context.finish = -1;
+    ret = waiter(thread, fun_bs_init, &context, &(context.finish));
+    if(ret)
+    {
+        printf("fun_bs_init ok\n");
+    }
+    else
+    {
+        printf("fun_bs_init failed\n");
+    }
 
 
 	while(true)
@@ -151,7 +184,7 @@ int main(int argc, char **argv)
             {
                 break;
             }
-            spdk_thread_poll(thread, 0, 0);
+            //spdk_thread_poll(thread, 0, 0);
         }
 	}
     spdk_thread_exit(thread);
