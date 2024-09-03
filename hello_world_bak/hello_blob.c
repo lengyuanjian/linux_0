@@ -1,19 +1,40 @@
 #include "spdk/env.h"
 #include "spdk/thread.h"
+#include "spdk/event.h"
+#include "spdk/blob_bdev.h"
+#include "spdk/blob.h"
 #include "spdk/log.h"
 #include <stdio.h>
 #include <spdk/init.h>
 #include <spdk/bdev.h>
-
+// #include "limit.h"
 // 任务的回调函数
 
 bool waiter(struct spdk_thread *thread, spdk_msg_fn fun, void *arg,  int * finished);
 
-struct context_t
+typedef struct disk_context
 {
-    struct spdk_bs_dev *bs_dev;
-    int finish;
-} context={NULL};
+    const char *                m_p_json_config_file;
+    struct spdk_thread *        m_p_thread;
+    struct spdk_bs_dev *        m_p_bs_dev;
+    struct spdk_blob_store*     m_p_bs;
+	uint64_t                    m_io_unit_size;
+    int m_finish;
+}disk_context_t;
+
+typedef struct file_context
+{ 
+	spdk_blob_id                m_blobid;
+    struct spdk_blob_store*     m_p_bs;
+	struct spdk_blob*           m_p_blob;
+	struct spdk_io_channel *    m_p_channel;
+	uint8_t *                   m_p_read_buff;
+	uint8_t *                   m_p_write_buff;
+    uint64_t                    m_pos;
+    uint64_t                    m_size;
+	int                         m_rc;
+    int                         m_finish;
+} file_context_t;
 
 bool waiter(struct spdk_thread *thread, spdk_msg_fn fun, void *arg,  int * finished)
 {
@@ -34,24 +55,24 @@ bool waiter(struct spdk_thread *thread, spdk_msg_fn fun, void *arg,  int * finis
     return false;
 }
 
-void fun_json_load_cb(int rc, void *ctx)
+void fun_json_load_cb(int rc, void *arg)
 {
+    disk_context_t * p_disk = (disk_context_t *)arg;
     if (rc == 0) 
     {
-        int *finish = ctx;
-        *finish = 0;
+        p_disk->m_finish = 0;
     } 
     else 
     {
-        int *finish = ctx;
-        *finish = 1;
+        p_disk->m_finish = 1;
         printf("加载失败，错误码: %d\n", rc);
     }
 }
 
 void fun_json_load(void *arg)
 {
-    spdk_subsystem_init_from_json_config("/home/spdk/examples/blob/hello_world_bak/conf.json",SPDK_DEFAULT_RPC_ADDR,fun_json_load_cb, arg, true);
+    disk_context_t * p_disk = (disk_context_t *)arg;
+    spdk_subsystem_init_from_json_config(p_disk->m_p_json_config_file,SPDK_DEFAULT_RPC_ADDR,fun_json_load_cb, arg, true);
 }
 
 static void base_bdev_event_cb(enum spdk_bdev_event_type type, struct spdk_bdev *bdev, void *event_ctx)
@@ -61,44 +82,28 @@ static void base_bdev_event_cb(enum spdk_bdev_event_type type, struct spdk_bdev 
 }
 static void bs_init_complete(void *arg, struct spdk_blob_store *bs, int bserrno)
 {
-	struct context_t * p_context = (struct context_t *)arg;
-
-        printf("bs_init_complete[%d]\n", bserrno);
+	disk_context_t * p_disk = (disk_context_t *)arg;
+    printf("bs_init_complete[%d]\n", bserrno);
     if (bserrno == 0) 
     {
-         
-        p_context->finish = 0;
+        p_disk->m_p_bs = bs;
+        SPDK_NOTICELOG("blobstore: %p\n", bs); 
+        p_disk->m_io_unit_size = spdk_bs_get_io_unit_size(bs);
+        printf("spdk_bs_get_io_unit_size%lu\n",p_disk->m_io_unit_size); 
+        p_disk->m_finish = 0;
     } 
     else 
     {
-        p_context->finish = 1;
         printf("加载失败，错误码: %d\n", bserrno);
-    }
-	SPDK_NOTICELOG("entry\n");
-	if (bserrno) 
-	{
 		printf("hello_context, Error initing the blobstore[%d]\n", bserrno);
-		return;
-	}
-    else
-    {
-    }
-
-	//hello_context->bs = bs;
-	//SPDK_NOTICELOG("blobstore: %p\n", hello_context->bs);
-	/*
-	 * We will use the io_unit size in allocating buffers, etc., later
-	 * so we'll just save it in out context buffer here.
-	 */
-	printf("spdk_bs_get_io_unit_size%u\n",spdk_bs_get_io_unit_size(bs));
-
-	//create_blob(hello_context);
+        p_disk->m_finish = 1;
+    } 
 }
 
 void fun_bs_init(void *arg)
 {
-    struct context_t * p_context = (struct context_t *)arg;
-    spdk_bs_init(p_context->bs_dev, NULL, bs_init_complete, arg);
+    disk_context_t * p_disk = (disk_context_t *)arg;
+    spdk_bs_init(p_disk->m_p_bs_dev, NULL, bs_init_complete, arg);
 }
 
 // 主程序入口
@@ -118,6 +123,8 @@ int main(int argc, char **argv)
 	spdk_log_set_level(SPDK_LOG_NOTICE);
 	spdk_log_open(NULL);
 
+    disk_context_t * p_disk = (disk_context_t *)calloc(1, sizeof(disk_context_t));
+
     pthread_t thread_id = pthread_self();
     printf("POSIX Thread ID: %lu\n", (unsigned long)thread_id);
 
@@ -130,9 +137,11 @@ int main(int argc, char **argv)
           spdk_env_fini();
           return -1;
     }
+    p_disk->m_p_thread = thread;
     spdk_set_thread(thread);
-    int finish = -1;
-    bool ret = waiter(thread, fun_json_load, &finish, &finish);
+    p_disk->m_p_json_config_file = "/home/spdk/examples/blob/hello_world_bak/conf.json";
+    p_disk->m_finish = -1; 
+    bool ret = waiter(thread, fun_json_load, p_disk, &(p_disk->m_finish));
     if(ret)
     {
         printf("加载文件成功\n");
@@ -142,8 +151,7 @@ int main(int argc, char **argv)
         printf("加载文件失败\n");
     }
  
-	struct spdk_bs_dev *bs_dev = NULL;
-	int rc = spdk_bdev_create_bs_dev_ext("Malloc0", base_bdev_event_cb, NULL, &bs_dev);
+	int rc = spdk_bdev_create_bs_dev_ext("Malloc0", base_bdev_event_cb, NULL, &(p_disk->m_p_bs_dev));
 	if (rc != 0) 
     {
 		SPDK_ERRLOG("Could not create blob bdev, %s!!\n", spdk_strerror(-rc));
@@ -154,9 +162,8 @@ int main(int argc, char **argv)
     {
         printf("create bs dev ext\n");
     }
-    context.bs_dev = bs_dev;
-    context.finish = -1;
-    ret = waiter(thread, fun_bs_init, &context, &(context.finish));
+    p_disk->m_finish = -1; 
+    ret = waiter(thread, fun_bs_init,p_disk, &(p_disk->m_finish));
     if(ret)
     {
         printf("fun_bs_init ok\n");
@@ -166,6 +173,7 @@ int main(int argc, char **argv)
         printf("fun_bs_init failed\n");
     }
 
+    
 
 	while(true)
 	{
@@ -192,6 +200,8 @@ int main(int argc, char **argv)
 
     //清理SPDK环境
     spdk_env_fini();
+
+    free(p_disk);
 
     return 0;
 }
