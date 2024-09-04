@@ -19,6 +19,8 @@ typedef struct disk_context
     struct spdk_bs_dev *        m_p_bs_dev;
     struct spdk_blob_store*     m_p_bs;
 	uint64_t                    m_io_unit_size;
+    uint64_t                    m_used_clusters;
+    uint64_t                    m_total_clusters;
     int                         m_finish;
 }disk_context_t;
 
@@ -29,7 +31,10 @@ typedef struct file_context
 	struct spdk_blob*           m_p_blob;
 	struct spdk_io_channel *    m_p_channel;
 	uint8_t *                   m_p_read_buff;
+    uint64_t                    m_read_data_len;
 	uint8_t *                   m_p_write_buff;
+    uint64_t                    m_write_data_len;
+    uint64_t                    m_io_unit_size;
     uint64_t                    m_pos;
     uint64_t                    m_size;
 	int                         m_rc;
@@ -142,6 +147,8 @@ void open_complete(void *arg, struct spdk_blob *blob, int bserrno)
 	}
     else
     {
+        uint64_t num_clusters = spdk_blob_get_num_clusters(blob);
+        printf("The blob occupies %lu clusters.\n", num_clusters);
         p_file->m_p_blob = blob;
         p_file->m_finish = 0;
     }
@@ -150,6 +157,118 @@ void fun_open_blob(void *arg)
 {
     file_context_t * p_file = (file_context_t *)arg;
 	spdk_bs_open_blob(p_file->m_p_bs, p_file->m_blobid, open_complete, p_file);
+}
+
+bool fun_alloc_io_channel(file_context_t * p_file)
+{
+    //file_context_t * p_file; // = (file_context_t *)arg; 
+    p_file->m_p_write_buff = spdk_malloc(p_file->m_io_unit_size, 0x1000, NULL, SPDK_ENV_LCORE_ID_ANY, SPDK_MALLOC_DMA);
+	if (p_file->m_p_write_buff == NULL) 
+	{
+		//unload_bs(hello_context, "Error in allocating memory", -ENOMEM);
+		return false;
+	}
+    p_file->m_p_read_buff = spdk_malloc(p_file->m_io_unit_size, 0x1000, NULL, SPDK_ENV_LCORE_ID_ANY, SPDK_MALLOC_DMA);
+	if (p_file->m_p_read_buff == NULL) 
+    {
+        return false;
+    }
+	p_file->m_p_channel = spdk_bs_alloc_io_channel(p_file->m_p_bs);
+	if (p_file->m_p_channel == NULL) 
+	{
+        printf("Error in allocating channel\n");
+		//unload_bs(hello_context, "Error in allocating channel", -ENOMEM);
+		return false;
+	}
+    return true;
+}
+
+void write_complete(void *arg, int bserrno)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+    if (bserrno) 
+    {
+		SPDK_ERRLOG("Error in write completion(err %d)\n", bserrno);
+        p_file->m_finish = 1;
+		return;
+	}
+    else
+    {
+        p_file->m_pos += p_file->m_write_data_len;
+        printf("file size[%lu] w len[%lu]\n", p_file->m_pos, p_file->m_write_data_len);
+        p_file->m_finish = 0;
+    }
+}
+
+void fun_write_blob(void *arg)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+	spdk_blob_io_write(p_file->m_p_blob, p_file->m_p_channel, p_file->m_p_write_buff, 0, 1, write_complete, arg);
+}
+
+void read_complete(void *arg, int bserrno)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+    if (bserrno) 
+    {
+		SPDK_ERRLOG("Error in read completion(err %d)\n", bserrno);
+        p_file->m_finish = 1;
+		return;
+	}
+    else
+    {
+        // p_file->m_pos += p_file->m_write_data_len;
+        // printf("file size[%lu] w len[%lu]", p_file->m_pos, p_file->m_write_data_len);
+        p_file->m_finish = 0;
+    }
+}
+
+void fun_read_blob(void *arg)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+	spdk_blob_io_read(p_file->m_p_blob, p_file->m_p_channel, p_file->m_p_read_buff, 0, 1, read_complete, arg);
+}
+
+void resize_complete(void *arg, int bserrno)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+    if (bserrno) 
+    {
+		SPDK_ERRLOG("Error in resize completion(err %d)\n", bserrno);
+        p_file->m_finish = 1;
+		return;
+	}
+    else
+    {
+        p_file->m_finish = 0;
+    }
+}
+
+void fun_reaize_blob(void *arg)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+    spdk_blob_resize(p_file->m_p_blob, 12, resize_complete, arg);
+}
+
+void sync_complete(void *arg, int bserrno)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+    if (bserrno) 
+    {
+		SPDK_ERRLOG("Error in sync completion(err %d)\n", bserrno);
+        p_file->m_finish = 1;
+		return;
+	}
+    else
+    {
+        p_file->m_finish = 0;
+    }
+}
+
+void fun_sync_blob(void *arg)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+    spdk_blob_sync_md(p_file->m_p_blob, sync_complete, arg);
 }
 
 // 主程序入口
@@ -223,6 +342,7 @@ int main(int argc, char **argv)
     }
     file_context_t * p_file = (file_context_t *)calloc(1, sizeof(file_context_t));
     p_file->m_p_bs = p_disk->m_p_bs;
+    p_file->m_io_unit_size = p_disk->m_io_unit_size;    
     // 创建 blob
     {
         p_file->m_finish = -1; 
@@ -250,9 +370,84 @@ int main(int argc, char **argv)
         }
     }
     //  resize blob
+    {
+        p_file->m_finish = -1; 
+        bool ret = waiter(p_disk->m_p_thread, fun_reaize_blob, p_file, &(p_file->m_finish));
+        if(ret)
+        {
+            printf("blob rsize ok\n");
+        }
+        else
+        {
+            printf("blob rsize failed\n");
+        }
+        p_file->m_finish = -1; 
+        ret = waiter(p_disk->m_p_thread, fun_sync_blob, p_file, &(p_file->m_finish));
+        if(ret)
+        {
+            printf("blob sync ok\n");
+            printf("get blob num clusters:%lu\n", spdk_blob_get_num_clusters(p_file->m_p_blob));
+        }
+        else
+        {
+            printf("blob sync failed\n");
+        }
+    }
     // 创建channel
+    {
+        bool ret = fun_alloc_io_channel(p_file);
+        if(ret)
+        {
+            printf("blob channel ok\n");
+        }
+        else
+        {
+            printf("blob channel failed\n");
+        }
+    }
     // 写入
+    {
+        p_file->m_finish = -1; 
+        memcpy(p_file->m_p_write_buff,"123456789", 10);
+        p_file->m_write_data_len = 10;
+        bool ret = waiter(p_disk->m_p_thread, fun_write_blob, p_file, &(p_file->m_finish));
+        if(ret)
+        {
+            printf("blob write ok\n");
+        }
+        else
+        {
+            printf("blob write failed\n");
+        }
+
+        // p_file->m_finish = -1; 
+        // memcpy(p_file->m_p_write_buff,"abcdef", 7);
+        // p_file->m_write_data_len = 7;
+        // ret = waiter(p_disk->m_p_thread, fun_write_blob, p_file, &(p_file->m_finish));
+        // if(ret)
+        // {
+        //     printf("blob write ok\n");
+        // }
+        // else
+        // {
+        //     printf("blob write failed\n");
+        // }
+    }
     // 读取
+    {
+        p_file->m_finish = -1;  
+        p_file->m_read_data_len = p_file->m_pos;
+        memset(p_file->m_p_read_buff,0,p_file->m_io_unit_size);
+        bool ret = waiter(p_disk->m_p_thread, fun_read_blob, p_file, &(p_file->m_finish));
+        if(ret)
+        {
+            printf("blob read ok[%s]\n",(char *)(p_file->m_p_read_buff));
+        }
+        else
+        {
+            printf("blob read failed\n");
+        }
+    }
     // close blob
     
 
