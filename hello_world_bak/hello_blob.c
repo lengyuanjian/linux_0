@@ -19,7 +19,7 @@ typedef struct disk_context
     struct spdk_bs_dev *        m_p_bs_dev;
     struct spdk_blob_store*     m_p_bs;
 	uint64_t                    m_io_unit_size;
-    int m_finish;
+    int                         m_finish;
 }disk_context_t;
 
 typedef struct file_context
@@ -80,6 +80,7 @@ static void base_bdev_event_cb(enum spdk_bdev_event_type type, struct spdk_bdev 
 	SPDK_WARNLOG("Unsupported bdev event: type %d\n", (int)type);
 	SPDK_NOTICELOG("Unsupported bdev event: type %d\n", (int)type);
 }
+
 static void bs_init_complete(void *arg, struct spdk_blob_store *bs, int bserrno)
 {
 	disk_context_t * p_disk = (disk_context_t *)arg;
@@ -106,6 +107,51 @@ void fun_bs_init(void *arg)
     spdk_bs_init(p_disk->m_p_bs_dev, NULL, bs_init_complete, arg);
 }
 
+void blob_create_complete(void *arg, spdk_blob_id blobid, int bserrno)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+	if (bserrno) 
+    {
+		// unload_bs(hello_context, "Error in blob create callback",
+		// 	  bserrno);
+        p_file->m_finish = 1;
+		return;
+	}
+    else
+    {
+        p_file->m_blobid = blobid;
+	    SPDK_NOTICELOG("new blob id %" PRIu64 "\n", blobid);
+        p_file->m_finish = 0;
+    }
+}
+
+void fun_create_blob(void *arg)
+{
+    file_context_t * p_file = (file_context_t *)arg;
+	spdk_bs_create_blob(p_file->m_p_bs, blob_create_complete, p_file);
+}
+void open_complete(void *arg, struct spdk_blob *blob, int bserrno)
+{
+    file_context_t * p_file = (file_context_t *)arg;
+    if (bserrno) 
+    {
+		// unload_bs(hello_context, "Error in open completion",
+		// 	  bserrno);
+        p_file->m_finish = 1;
+		return;
+	}
+    else
+    {
+        p_file->m_p_blob = blob;
+        p_file->m_finish = 0;
+    }
+}
+void fun_open_blob(void *arg)
+{
+    file_context_t * p_file = (file_context_t *)arg;
+	spdk_bs_open_blob(p_file->m_p_bs, p_file->m_blobid, open_complete, p_file);
+}
+
 // 主程序入口
 int main(int argc, char **argv)
 {
@@ -124,55 +170,90 @@ int main(int argc, char **argv)
 	spdk_log_open(NULL);
 
     disk_context_t * p_disk = (disk_context_t *)calloc(1, sizeof(disk_context_t));
+    {
+        pthread_t thread_id = pthread_self();
+        printf("POSIX Thread ID: %lu\n", (unsigned long)thread_id);
 
-    pthread_t thread_id = pthread_self();
-    printf("POSIX Thread ID: %lu\n", (unsigned long)thread_id);
-
-    // 创建SPDK线程
-    spdk_thread_lib_init(NULL, 0);
-    struct spdk_thread *thread = spdk_thread_create("example_thread", NULL);
-    if (!thread) 
-    {
-          SPDK_ERRLOG("Unable to create SPDK thread\n");
-          spdk_env_fini();
-          return -1;
+        // 创建SPDK线程
+        spdk_thread_lib_init(NULL, 0);
+        struct spdk_thread *thread = spdk_thread_create("example_thread", NULL);
+        if (!thread) 
+        {
+            SPDK_ERRLOG("Unable to create SPDK thread\n");
+            spdk_env_fini();
+            return -1;
+        }
+        p_disk->m_p_thread = thread;
+        spdk_set_thread(thread);
     }
-    p_disk->m_p_thread = thread;
-    spdk_set_thread(thread);
-    p_disk->m_p_json_config_file = "/home/spdk/examples/blob/hello_world_bak/conf.json";
-    p_disk->m_finish = -1; 
-    bool ret = waiter(thread, fun_json_load, p_disk, &(p_disk->m_finish));
-    if(ret)
     {
-        printf("加载文件成功\n");
+        p_disk->m_p_json_config_file = "/home/spdk/examples/blob/hello_world_bak/conf.json";
+        p_disk->m_finish = -1; 
+        bool ret = waiter(p_disk->m_p_thread, fun_json_load, p_disk, &(p_disk->m_finish));
+        if(ret)
+        {
+            printf("加载文件成功\n");
+        }
+        else
+        {
+            printf("加载文件失败\n");
+        }
+    
+        int rc = spdk_bdev_create_bs_dev_ext("Malloc0", base_bdev_event_cb, NULL, &(p_disk->m_p_bs_dev));
+        if (rc != 0) 
+        {
+            SPDK_ERRLOG("Could not create blob bdev, %s!!\n", spdk_strerror(-rc));
+            spdk_app_stop(-1);
+            return 0;
+        }
+        else
+        {
+            printf("create bs dev ext\n");
+        }
+        p_disk->m_finish = -1; 
+        ret = waiter(p_disk->m_p_thread, fun_bs_init,p_disk, &(p_disk->m_finish));
+        if(ret)
+        {
+            printf("fun_bs_init ok\n");
+        }
+        else
+        {
+            printf("fun_bs_init failed\n");
+        }
     }
-    else
+    file_context_t * p_file = (file_context_t *)calloc(1, sizeof(file_context_t));
+    p_file->m_p_bs = p_disk->m_p_bs;
+    // 创建 blob
     {
-        printf("加载文件失败\n");
+        p_file->m_finish = -1; 
+        bool ret = waiter(p_disk->m_p_thread, fun_create_blob, p_file, &(p_file->m_finish));
+        if(ret)
+        {
+            printf("blob creat ok\n");
+        }
+        else
+        {
+            printf("blob creat failed\n");
+        }
     }
- 
-	int rc = spdk_bdev_create_bs_dev_ext("Malloc0", base_bdev_event_cb, NULL, &(p_disk->m_p_bs_dev));
-	if (rc != 0) 
+    // 打开 blob
     {
-		SPDK_ERRLOG("Could not create blob bdev, %s!!\n", spdk_strerror(-rc));
-		spdk_app_stop(-1);
-		return 0;
-	}
-    else
-    {
-        printf("create bs dev ext\n");
+        p_file->m_finish = -1; 
+        bool ret = waiter(p_disk->m_p_thread, fun_open_blob, p_file, &(p_file->m_finish));
+        if(ret)
+        {
+            printf("blob open ok\n");
+        }
+        else
+        {
+            printf("blob open failed\n");
+        }
     }
-    p_disk->m_finish = -1; 
-    ret = waiter(thread, fun_bs_init,p_disk, &(p_disk->m_finish));
-    if(ret)
-    {
-        printf("fun_bs_init ok\n");
-    }
-    else
-    {
-        printf("fun_bs_init failed\n");
-    }
-
+    //  resize blob
+    // 创建channel
+    // 写入
+    // 读取
+    // close blob
     
 
 	while(true)
@@ -195,8 +276,8 @@ int main(int argc, char **argv)
             //spdk_thread_poll(thread, 0, 0);
         }
 	}
-    spdk_thread_exit(thread);
-    spdk_thread_destroy(thread);
+    spdk_thread_exit(p_disk->m_p_thread);
+    spdk_thread_destroy(p_disk->m_p_thread);
 
     //清理SPDK环境
     spdk_env_fini();
