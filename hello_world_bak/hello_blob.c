@@ -35,7 +35,7 @@ typedef struct disk_context
     struct spdk_thread *        m_p_thread;
     struct spdk_bs_dev *        m_p_bs_dev;
     struct spdk_blob_store*     m_p_bs;
-    file_context_t              m_p_super_blob;
+    file_context_t              m_super_blob;
 	uint64_t                    m_io_unit_size;
     uint64_t                    m_used_clusters;
     uint64_t                    m_total_clusters;
@@ -317,6 +317,33 @@ void fun_sync_blob(void *arg)
 	file_context_t * p_file = (file_context_t *)arg;
     spdk_blob_sync_md(p_file->m_p_blob, sync_complete, arg);
 }
+void get_super_blob_complete(void *arg, spdk_blob_id blobid, int bserrno)
+{
+	disk_context_t * p_disk = (disk_context_t *)arg;
+
+	if (bserrno && bserrno != -ENOENT) 
+    {
+		//printf"Error in get_super callback", bserrno);
+        printf("supper blob not find\n");
+        p_disk->m_finish = 1;
+		return;
+	}
+	p_disk->m_super_blob.m_blobid = blobid;
+    if (bserrno != -ENOENT) 
+    {
+		printf("\tsuper blob ID: 0x%" PRIx64 "\n", blobid);
+	}
+    else 
+    {
+		printf("\tsuper blob ID: none assigned\n");
+	}
+    p_disk->m_finish = 0;
+}
+void fun_get_super_blob(void *arg)
+{
+    disk_context_t * p_disk = (disk_context_t *)arg;
+    spdk_bs_get_super(p_disk->m_p_bs, get_super_blob_complete, arg);
+}
 
 // 主程序入口
 int main(int argc, char **argv)
@@ -521,7 +548,29 @@ int main(int argc, char **argv)
             printf("blob delete failed\n");
         }
     }
+    // get super
+    //p_disk->m_super_blob.m_blobid;
+    {
+         p_disk->m_finish = -1; 
+        bool ret = waiter(p_disk->m_p_thread, fun_get_super_blob, p_disk, &(p_disk->m_finish));
+        if(ret)
+        {
+            printf("blob get super blob id ok\n");
+            if(p_disk->m_super_blob.m_blobid == -ENOENT)
+            {
+                // 创建
+                // 设置
+            }
+            else
+            {
 
+            }
+        }
+        else
+        {
+            printf("blob get super blob id failed\n");
+        }
+    }
 	while(true)
 	{
         printf("spdk:");
