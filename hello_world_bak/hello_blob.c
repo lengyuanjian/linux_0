@@ -12,18 +12,6 @@
 
 bool waiter(struct spdk_thread *thread, spdk_msg_fn fun, void *arg,  int * finished);
 
-typedef struct disk_context
-{
-    const char *                m_p_json_config_file;
-    struct spdk_thread *        m_p_thread;
-    struct spdk_bs_dev *        m_p_bs_dev;
-    struct spdk_blob_store*     m_p_bs;
-	uint64_t                    m_io_unit_size;
-    uint64_t                    m_used_clusters;
-    uint64_t                    m_total_clusters;
-    int                         m_finish;
-}disk_context_t;
-
 typedef struct file_context
 { 
 	spdk_blob_id                m_blobid;
@@ -40,6 +28,19 @@ typedef struct file_context
 	int                         m_rc;
     int                         m_finish;
 } file_context_t;
+
+typedef struct disk_context
+{
+    const char *                m_p_json_config_file;
+    struct spdk_thread *        m_p_thread;
+    struct spdk_bs_dev *        m_p_bs_dev;
+    struct spdk_blob_store*     m_p_bs;
+    file_context_t              m_p_super_blob;
+	uint64_t                    m_io_unit_size;
+    uint64_t                    m_used_clusters;
+    uint64_t                    m_total_clusters;
+    int                         m_finish;
+}disk_context_t;
 
 bool waiter(struct spdk_thread *thread, spdk_msg_fn fun, void *arg,  int * finished)
 {
@@ -227,6 +228,52 @@ void fun_read_blob(void *arg)
 {
 	file_context_t * p_file = (file_context_t *)arg;
 	spdk_blob_io_read(p_file->m_p_blob, p_file->m_p_channel, p_file->m_p_read_buff, 0, 1, read_complete, arg);
+}
+
+void close_complete(void *arg, int bserrno)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+    if (bserrno) 
+    {
+		SPDK_ERRLOG("Error in close completion(err %d)\n", bserrno);
+        p_file->m_finish = 1;
+		return;
+	}
+    else
+    {
+        // p_file->m_pos += p_file->m_write_data_len;
+        // printf("file size[%lu] w len[%lu]", p_file->m_pos, p_file->m_write_data_len);
+        p_file->m_finish = 0;
+    }
+}
+
+void fun_close_blob(void *arg)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+    spdk_blob_close(p_file->m_p_blob, close_complete, arg);
+}
+
+void delete_complete(void *arg, int bserrno)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+    if (bserrno) 
+    {
+		SPDK_ERRLOG("Error in delete completion(err %d)\n", bserrno);
+        p_file->m_finish = 1;
+		return;
+	}
+    else
+    {
+        // p_file->m_pos += p_file->m_write_data_len;
+        // printf("file size[%lu] w len[%lu]", p_file->m_pos, p_file->m_write_data_len);
+        p_file->m_finish = 0;
+    }
+}
+
+void fun_delete_blob(void *arg)
+{
+	file_context_t * p_file = (file_context_t *)arg;
+    spdk_bs_delete_blob(p_file->m_p_bs, p_file->m_blobid, delete_complete, arg);
 }
 
 void resize_complete(void *arg, int bserrno)
@@ -449,7 +496,31 @@ int main(int argc, char **argv)
         }
     }
     // close blob
-    
+    {
+        p_file->m_finish = -1; 
+        bool ret = waiter(p_disk->m_p_thread, fun_close_blob, p_file, &(p_file->m_finish));
+        if(ret)
+        {
+            printf("blob close ok\n");
+        }
+        else
+        {
+            printf("blob close failed\n");
+        }
+    }
+    // delete blob
+    {
+        p_file->m_finish = -1; 
+        bool ret = waiter(p_disk->m_p_thread, fun_delete_blob, p_file, &(p_file->m_finish));
+        if(ret)
+        {
+            printf("blob delete ok\n");
+        }
+        else
+        {
+            printf("blob delete failed\n");
+        }
+    }
 
 	while(true)
 	{
