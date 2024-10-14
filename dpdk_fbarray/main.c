@@ -1,7 +1,7 @@
 #include <stdio.h> 
 #include "rte_pause.h"
 #include "rte_atomic.h"
-
+#include "rte_filesystem.h"
 int main(int argc, char *argv[])
 {
 	printf("%s\n", argv[0]);
@@ -37,6 +37,9 @@ int main(int argc, char *argv[])
     // 进行原子加法操作（64位）
     rte_atomic64_add(&i64, 10);
     printf("Atomic64 value after addition: %ld\n", rte_atomic64_read(&i64));
+    eal_create_runtime_dir();
+
+    printf(" pid[%d] runtimedir[%s]\n", getpid(), eal_get_runtime_dir());
    
 	return argc;
 }

@@ -20,12 +20,19 @@
 #include "eal_private.h"
 
 #include "rte_fbarray.h"
+#include "rte_log.h"
 
 #define MASK_SHIFT 6ULL
 #define MASK_ALIGN (1ULL << MASK_SHIFT)
 #define MASK_LEN_TO_IDX(x) ((x) >> MASK_SHIFT)
 #define MASK_LEN_TO_MOD(x) ((x) - RTE_ALIGN_FLOOR(x, MASK_ALIGN))
 #define MASK_GET_IDX(idx, mod) ((idx << MASK_SHIFT) + mod)
+
+static const char *eal_get_fbarray_path(char *buffer, size_t buflen, const char *name) 
+{
+	snprintf(buffer, buflen, "%s/fbarray_%s", eal_get_runtime_dir(), name);
+	return buffer;
+}
 
 /*
  * This is a mask that is always stored at the end of array, to provide fast
