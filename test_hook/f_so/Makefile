@@ -1,6 +1,6 @@
 CC = g++
 CFLAGS += -Wall -Wextra -std=c++17 -fPIC  # 增加 -fPIC 选项以支持生成共享库
-LDFLAGS += -shared  # 增加 -shared 选项用于生成共享库
+LDFLAGS += -shared -ldl # 增加 -shared 选项用于生成共享库
 
 # 生成的共享库名称
 TARGET = libapp.so
