@@ -1,0 +1,17 @@
+[
+    {
+        "arguments": [
+            "g++",
+            "-c",
+            "-Wall",
+            "-Wextra",
+            "-std=c++17",
+            "-g",
+            "-o",
+            "obj/debug/main.o",
+            "main.cpp"
+        ],
+        "directory": "/home/linux_0/test_hook",
+        "file": "main.cpp"
+    }
+]
