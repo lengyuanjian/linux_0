@@ -546,4 +546,13 @@ rte_exit(int exit_code, const char *format, ...)
 }
 #endif
 
+#ifndef likely
+#define likely(x)	__builtin_expect(!!(x), 1)
+#endif /* likely */
+
+#ifndef unlikely
+#define unlikely(x)	__builtin_expect(!!(x), 0)
+#endif /* unlikely */
+
+
 #endif

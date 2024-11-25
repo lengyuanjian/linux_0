@@ -18,10 +18,10 @@
  *
  */
 
-#include <rte_lcore.h>
-#ifdef RTE_FORCE_INTRINSICS
+// #include <rte_lcore.h>
+// #ifdef RTE_FORCE_INTRINSICS
 #include "rte_common.h"
-#endif
+// #endif
 #include "rte_pause.h"
 
 /**
@@ -195,6 +195,37 @@ static inline void rte_spinlock_recursive_init(rte_spinlock_recursive_t *slr)
 	slr->user = -1;
 	slr->count = 0;
 }
+#include <unistd.h>
+#include <sys/syscall.h>
+static inline int rte_sys_gettid(void)
+{
+	return (int)syscall(SYS_gettid);
+}
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <pthread.h>
+
+#define RTE_DEFINE_PER_LCORE(type, name)			\
+	__thread __typeof__(type) per_lcore_##name
+
+#define RTE_DECLARE_PER_LCORE(type, name)			\
+	extern __thread __typeof__(type) per_lcore_##name
+
+#define RTE_PER_LCORE(name) (per_lcore_##name)
+
+#ifdef __cplusplus
+}
+#endif
+static inline int rte_gettid(void)
+{
+	static RTE_DEFINE_PER_LCORE(int, _thread_id) = -1;
+	if (RTE_PER_LCORE(_thread_id) == -1)
+		RTE_PER_LCORE(_thread_id) = rte_sys_gettid();
+	return RTE_PER_LCORE(_thread_id);
+}
 
 /**
  * Take the recursive spinlock.
@@ -348,13 +379,13 @@ rte_spinlock_trylock (rte_spinlock_t *sl)
 }
 #endif
 
-extern uint8_t rte_rtm_supported;
+extern unsigned char rte_rtm_supported;
 
 static inline int rte_tm_supported(void)
 {
 	return rte_rtm_supported;
 }
-
+#include "rte_rtm.h"
 static inline int
 rte_try_tm(volatile int *lock)
 {

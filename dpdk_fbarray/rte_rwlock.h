@@ -177,6 +177,9 @@ rte_rwlock_write_unlock_tm(rte_rwlock_t *rwl);
 }
 #endif
 
+#include "rte_rtm.h"
+#include "rte_spinlock.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

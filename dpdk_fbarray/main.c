@@ -2,6 +2,9 @@
 #include "rte_pause.h"
 #include "rte_atomic.h"
 #include "rte_filesystem.h"
+#include <unistd.h>
+#include "rte_fbarray.h"
+
 int main(int argc, char *argv[])
 {
 	printf("%s\n", argv[0]);
@@ -40,6 +43,19 @@ int main(int argc, char *argv[])
     eal_create_runtime_dir();
 
     printf(" pid[%d] runtimedir[%s]\n", getpid(), eal_get_runtime_dir());
-   
+    {
+        struct rte_fbarray arr;    // 声明一个 fbarray 结构体
+
+        // 初始化 fbarray 数组
+        int ret = rte_fbarray_init(&arr, "lyj_fbarray", 128, 512);
+        if (ret != 0) {
+            printf("Error initializing fbarray: %d\n", ret);
+            return -1;
+        }
+
+        printf("fbarray initialized with size: %u\n", 512);
+
+    }
+
 	return argc;
 }

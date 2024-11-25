@@ -11,13 +11,15 @@
 #include <string.h>
 
 #include "rte_common.h"
-#include <rte_log.h>
-#include <rte_errno.h>
+#include "rte_log.h"
+#include <unistd.h>
+#include <sys/types.h>
+// #include <// rte_errno.h>
 #include "rte_spinlock.h"
-#include <rte_tailq.h>
+// #include <rte_tailq.h>
 
-#include "eal_filesystem.h"
-#include "eal_private.h"
+#include "rte_filesystem.h"
+// #include "eal_private.h"
 
 #include "rte_fbarray.h"
 #include "rte_log.h"
@@ -78,7 +80,7 @@ resize_and_map(int fd, void *addr, size_t len)
 	if (ftruncate(fd, len)) {
 		RTE_LOG(ERR, EAL, "Cannot truncate %s\n", path);
 		/* pass errno up the chain */
-		rte_errno = errno;
+		// rte_errno = errno;
 		return -1;
 	}
 
@@ -87,7 +89,7 @@ resize_and_map(int fd, void *addr, size_t len)
 	if (map_addr != addr) {
 		RTE_LOG(ERR, EAL, "mmap() failed: %s\n", strerror(errno));
 		/* pass errno up the chain */
-		rte_errno = errno;
+		// rte_errno = errno;
 		return -1;
 	}
 	return 0;
@@ -238,7 +240,7 @@ find_next_n(const struct rte_fbarray *arr, unsigned int start, unsigned int n,
 		return MASK_GET_IDX(msk_idx, run_start);
 	}
 	/* we didn't find anything */
-	rte_errno = used ? -ENOENT : -ENOSPC;
+	// rte_errno = used ? -ENOENT : -ENOSPC;
 	return -1;
 }
 
@@ -294,7 +296,7 @@ find_next(const struct rte_fbarray *arr, unsigned int start, bool used)
 		return MASK_GET_IDX(idx, found);
 	}
 	/* we didn't find anything */
-	rte_errno = used ? -ENOENT : -ENOSPC;
+	// rte_errno = used ? -ENOENT : -ENOSPC;
 	return -1;
 }
 
@@ -369,7 +371,7 @@ set_used(struct rte_fbarray *arr, unsigned int idx, bool used)
 	int ret = -1;
 
 	if (arr == NULL || idx >= arr->len) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 	msk = get_used_mask(arr->data, arr->elt_sz, arr->len);
@@ -401,17 +403,145 @@ static int
 fully_validate(const char *name, unsigned int elt_sz, unsigned int len)
 {
 	if (name == NULL || elt_sz == 0 || len == 0 || len > INT_MAX) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
 	if (strnlen(name, RTE_FBARRAY_NAME_LEN) == RTE_FBARRAY_NAME_LEN) {
-		rte_errno = ENAMETOOLONG;
+		// rte_errno = ENAMETOOLONG;
 		return -1;
 	}
 	return 0;
 }
 
+#define MEMSEG_LIST_FMT "memseg-%" PRIu64 "k-%i-%i"
+#define EAL_VIRTUAL_AREA_ADDR_IS_HINT (1 << 0)
+#define EAL_VIRTUAL_AREA_ALLOW_SHRINK (1 << 1)
+#define EAL_VIRTUAL_AREA_UNMAP (1 << 2)
+
+static void *next_baseaddr;
+static uint64_t system_page_sz;
+
+void * eal_get_virtual_area(void *requested_addr, size_t *size, size_t page_sz, int flags, int mmap_flags)
+{
+	bool addr_is_hint, allow_shrink, unmap, no_align;
+	uint64_t map_sz;
+	void *mapped_addr, *aligned_addr;
+
+	if (system_page_sz == 0)
+		system_page_sz = sysconf(_SC_PAGESIZE);
+
+	mmap_flags |= MAP_PRIVATE | MAP_ANONYMOUS;
+
+	RTE_LOG(DEBUG, EAL, "Ask a virtual area of 0x%zx bytes\n", *size);
+
+	addr_is_hint = (flags & EAL_VIRTUAL_AREA_ADDR_IS_HINT) > 0;
+	allow_shrink = (flags & EAL_VIRTUAL_AREA_ALLOW_SHRINK) > 0;
+	unmap = (flags & EAL_VIRTUAL_AREA_UNMAP) > 0;
+
+    if (next_baseaddr == NULL
+             /* && internal_config.base_virtaddr != 0 */
+             /*&& rte_eal_process_type() == RTE_PROC_PRIMARY */) 
+		next_baseaddr = 0;// (void *) internal_config.base_virtaddr;
+
+	if (requested_addr == NULL && next_baseaddr != NULL) {
+		requested_addr = next_baseaddr;
+		requested_addr = RTE_PTR_ALIGN(requested_addr, page_sz);
+		addr_is_hint = true;
+	}
+
+	/* we don't need alignment of resulting pointer in the following cases:
+	 *
+	 * 1. page size is equal to system size
+	 * 2. we have a requested address, and it is page-aligned, and we will
+	 *    be discarding the address if we get a different one.
+	 *
+	 * for all other cases, alignment is potentially necessary.
+	 */
+	no_align = (requested_addr != NULL &&
+		requested_addr == RTE_PTR_ALIGN(requested_addr, page_sz) &&
+		!addr_is_hint) ||
+		page_sz == system_page_sz;
+
+	do {
+		map_sz = no_align ? *size : *size + page_sz;
+		if (map_sz > SIZE_MAX) {
+			RTE_LOG(ERR, EAL, "Map size too big\n");
+			// rte_errno = E2BIG;
+			return NULL;
+		}
+
+		mapped_addr = mmap(requested_addr, (size_t)map_sz, PROT_READ,
+				mmap_flags, -1, 0);
+		if (mapped_addr == MAP_FAILED && allow_shrink)
+			*size -= page_sz;
+	} while (allow_shrink && mapped_addr == MAP_FAILED && *size > 0);
+
+	/* align resulting address - if map failed, we will ignore the value
+	 * anyway, so no need to add additional checks.
+	 */
+	aligned_addr = no_align ? mapped_addr :
+			RTE_PTR_ALIGN(mapped_addr, page_sz);
+
+	if (*size == 0) {
+		RTE_LOG(ERR, EAL, "Cannot get a virtual area of any size: %s\n",
+			strerror(errno));
+		// rte_errno = errno;
+		return NULL;
+	} else if (mapped_addr == MAP_FAILED) {
+		RTE_LOG(ERR, EAL, "Cannot get a virtual area: %s\n",
+			strerror(errno));
+		/* pass errno up the call chain */
+		// rte_errno = errno;
+		return NULL;
+	} else if (requested_addr != NULL && !addr_is_hint &&
+			aligned_addr != requested_addr) {
+		RTE_LOG(ERR, EAL, "Cannot get a virtual area at requested address: %p (got %p)\n",
+			requested_addr, aligned_addr);
+		munmap(mapped_addr, map_sz);
+		// rte_errno = EADDRNOTAVAIL;
+		return NULL;
+	} else if (requested_addr != NULL && addr_is_hint &&
+			aligned_addr != requested_addr) {
+		RTE_LOG(WARNING, EAL, "WARNING! Base virtual address hint (%p != %p) not respected!\n",
+			requested_addr, aligned_addr);
+		RTE_LOG(WARNING, EAL, "   This may cause issues with mapping memory into secondary processes\n");
+	} else if (next_baseaddr != NULL) {
+		next_baseaddr = RTE_PTR_ADD(aligned_addr, *size);
+	}
+
+	RTE_LOG(DEBUG, EAL, "Virtual area found at %p (size = 0x%zx)\n",
+		aligned_addr, *size);
+
+	if (unmap) {
+		munmap(mapped_addr, map_sz);
+	} else if (!no_align) {
+		void *map_end, *aligned_end;
+		size_t before_len, after_len;
+
+		/* when we reserve space with alignment, we add alignment to
+		 * mapping size. On 32-bit, if 1GB alignment was requested, this
+		 * would waste 1GB of address space, which is a luxury we cannot
+		 * afford. so, if alignment was performed, check if any unneeded
+		 * address space can be unmapped back.
+		 */
+
+		map_end = RTE_PTR_ADD(mapped_addr, (size_t)map_sz);
+		aligned_end = RTE_PTR_ADD(aligned_addr, *size);
+
+		/* unmap space before aligned mmap address */
+		before_len = RTE_PTR_DIFF(aligned_addr, mapped_addr);
+		if (before_len > 0)
+			munmap(mapped_addr, before_len);
+
+		/* unmap space after aligned end mmap address */
+		after_len = RTE_PTR_DIFF(map_end, aligned_end);
+		if (after_len > 0)
+			munmap(aligned_end, after_len);
+	}
+
+	return aligned_addr;
+}
 int __rte_experimental
 rte_fbarray_init(struct rte_fbarray *arr, const char *name, unsigned int len,
 		unsigned int elt_sz)
@@ -423,7 +553,7 @@ rte_fbarray_init(struct rte_fbarray *arr, const char *name, unsigned int len,
 	int fd = -1;
 
 	if (arr == NULL) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -452,12 +582,12 @@ rte_fbarray_init(struct rte_fbarray *arr, const char *name, unsigned int len,
 	if (fd < 0) {
 		RTE_LOG(DEBUG, EAL, "%s(): couldn't open %s: %s\n", __func__,
 				path, strerror(errno));
-		rte_errno = errno;
+		// rte_errno = errno;
 		goto fail;
 	} else if (flock(fd, LOCK_EX | LOCK_NB)) {
 		RTE_LOG(DEBUG, EAL, "%s(): couldn't lock %s: %s\n", __func__,
 				path, strerror(errno));
-		rte_errno = EBUSY;
+		// rte_errno = EBUSY;
 		goto fail;
 	}
 
@@ -465,7 +595,7 @@ rte_fbarray_init(struct rte_fbarray *arr, const char *name, unsigned int len,
 	 * attach to it, but no other process could reinitialize it.
 	 */
 	if (flock(fd, LOCK_SH | LOCK_NB)) {
-		rte_errno = errno;
+		// rte_errno = errno;
 		goto fail;
 	}
 
@@ -478,8 +608,7 @@ rte_fbarray_init(struct rte_fbarray *arr, const char *name, unsigned int len,
 	/* initialize the data */
 	memset(data, 0, mmap_len);
 
-	/* populate data structure */
-	strlcpy(arr->name, name, sizeof(arr->name));
+	snprintf(arr->name, sizeof(arr->name), "%s", name);
 	arr->data = data;
 	arr->len = len;
 	arr->elt_sz = elt_sz;
@@ -499,6 +628,7 @@ fail:
 	return -1;
 }
 
+
 int __rte_experimental
 rte_fbarray_attach(struct rte_fbarray *arr)
 {
@@ -508,7 +638,7 @@ rte_fbarray_attach(struct rte_fbarray *arr)
 	int fd = -1;
 
 	if (arr == NULL) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -535,13 +665,13 @@ rte_fbarray_attach(struct rte_fbarray *arr)
 
 	fd = open(path, O_RDWR);
 	if (fd < 0) {
-		rte_errno = errno;
+		// rte_errno = errno;
 		goto fail;
 	}
 
 	/* lock the file, to let others know we're using it */
 	if (flock(fd, LOCK_SH | LOCK_NB)) {
-		rte_errno = errno;
+		// rte_errno = errno;
 		goto fail;
 	}
 
@@ -565,7 +695,7 @@ int __rte_experimental
 rte_fbarray_detach(struct rte_fbarray *arr)
 {
 	if (arr == NULL) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -612,7 +742,7 @@ rte_fbarray_destroy(struct rte_fbarray *arr)
 	}
 	if (flock(fd, LOCK_EX | LOCK_NB)) {
 		RTE_LOG(DEBUG, EAL, "Cannot destroy fbarray - another process is using it\n");
-		rte_errno = EBUSY;
+		// rte_errno = EBUSY;
 		ret = -1;
 	} else {
 		ret = 0;
@@ -629,12 +759,12 @@ rte_fbarray_get(const struct rte_fbarray *arr, unsigned int idx)
 {
 	void *ret = NULL;
 	if (arr == NULL) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return NULL;
 	}
 
 	if (idx >= arr->len) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return NULL;
 	}
 
@@ -664,7 +794,7 @@ rte_fbarray_is_used(struct rte_fbarray *arr, unsigned int idx)
 	int ret = -1;
 
 	if (arr == NULL || idx >= arr->len) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -688,7 +818,7 @@ rte_fbarray_find_next_free(struct rte_fbarray *arr, unsigned int start)
 	int ret = -1;
 
 	if (arr == NULL || start >= arr->len) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -696,7 +826,7 @@ rte_fbarray_find_next_free(struct rte_fbarray *arr, unsigned int start)
 	rte_rwlock_read_lock(&arr->rwlock);
 
 	if (arr->len == arr->count) {
-		rte_errno = ENOSPC;
+		// rte_errno = ENOSPC;
 		goto out;
 	}
 
@@ -712,7 +842,7 @@ rte_fbarray_find_next_used(struct rte_fbarray *arr, unsigned int start)
 	int ret = -1;
 
 	if (arr == NULL || start >= arr->len) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -720,7 +850,7 @@ rte_fbarray_find_next_used(struct rte_fbarray *arr, unsigned int start)
 	rte_rwlock_read_lock(&arr->rwlock);
 
 	if (arr->count == 0) {
-		rte_errno = ENOENT;
+		// rte_errno = ENOENT;
 		goto out;
 	}
 
@@ -737,7 +867,7 @@ rte_fbarray_find_next_n_free(struct rte_fbarray *arr, unsigned int start,
 	int ret = -1;
 
 	if (arr == NULL || start >= arr->len || n > arr->len) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -745,7 +875,7 @@ rte_fbarray_find_next_n_free(struct rte_fbarray *arr, unsigned int start,
 	rte_rwlock_read_lock(&arr->rwlock);
 
 	if (arr->len == arr->count || arr->len - arr->count < n) {
-		rte_errno = ENOSPC;
+		// rte_errno = ENOSPC;
 		goto out;
 	}
 
@@ -762,7 +892,7 @@ rte_fbarray_find_next_n_used(struct rte_fbarray *arr, unsigned int start,
 	int ret = -1;
 
 	if (arr == NULL || start >= arr->len || n > arr->len) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -770,7 +900,7 @@ rte_fbarray_find_next_n_used(struct rte_fbarray *arr, unsigned int start,
 	rte_rwlock_read_lock(&arr->rwlock);
 
 	if (arr->count < n) {
-		rte_errno = ENOENT;
+		// rte_errno = ENOENT;
 		goto out;
 	}
 
@@ -786,7 +916,7 @@ rte_fbarray_find_contig_free(struct rte_fbarray *arr, unsigned int start)
 	int ret = -1;
 
 	if (arr == NULL || start >= arr->len) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -794,7 +924,7 @@ rte_fbarray_find_contig_free(struct rte_fbarray *arr, unsigned int start)
 	rte_rwlock_read_lock(&arr->rwlock);
 
 	if (arr->len == arr->count) {
-		rte_errno = ENOSPC;
+		// rte_errno = ENOSPC;
 		goto out;
 	}
 
@@ -815,7 +945,7 @@ rte_fbarray_find_contig_used(struct rte_fbarray *arr, unsigned int start)
 	int ret = -1;
 
 	if (arr == NULL || start >= arr->len) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -840,12 +970,12 @@ rte_fbarray_find_idx(const struct rte_fbarray *arr, const void *elt)
 	 */
 
 	if (arr == NULL || elt == NULL) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 	end = RTE_PTR_ADD(arr->data, arr->elt_sz * arr->len);
 	if (elt < arr->data || elt >= end) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return -1;
 	}
 
@@ -861,7 +991,7 @@ rte_fbarray_dump_metadata(struct rte_fbarray *arr, FILE *f)
 	unsigned int i;
 
 	if (arr == NULL || f == NULL) {
-		rte_errno = EINVAL;
+		// rte_errno = EINVAL;
 		return;
 	}
 
