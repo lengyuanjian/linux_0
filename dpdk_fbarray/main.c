@@ -5,6 +5,26 @@
 #include <unistd.h>
 #include "rte_fbarray.h"
 
+void print_fbarray_info(const struct rte_fbarray *arr)
+{
+    if (arr == NULL) {
+        printf("Error: Null pointer passed to print_fbarray_info.\n");
+        return;
+    }
+
+    printf("----- fbarray Info -----\n");
+    printf("Name: %s\n", arr->name);
+    printf("Count (entries stored): %u\n", arr->count);
+    printf("Length (current length of the array): %u\n", arr->len);
+    printf("Element Size: %u bytes\n", arr->elt_sz);
+    printf("Data Pointer: %p\n", arr->data);
+    
+    // Print lock address
+    printf("Read-Write Lock (address): %p\n", &arr->rwlock);
+
+    printf("------------------------\n");
+}
+
 int main(int argc, char *argv[])
 {
 	printf("%s\n", argv[0]);
@@ -44,16 +64,82 @@ int main(int argc, char *argv[])
 
     printf(" pid[%d] runtimedir[%s]\n", getpid(), eal_get_runtime_dir());
     {
-        struct rte_fbarray arr;    // 声明一个 fbarray 结构体
+        struct rte_fbarray array; // 声明一个 fbarray 结构体
+        #define ELEMENT_SIZE sizeof(int)
+        #define ARRAY_LENGTH 17
 
         // 初始化 fbarray 数组
-        int ret = rte_fbarray_init(&arr, "lyj_fbarray", 128, 512);
+        int ret = rte_fbarray_init(&array, "lyj_fbarray",  ARRAY_LENGTH, ELEMENT_SIZE);
         if (ret != 0) {
             printf("Error initializing fbarray: %d\n", ret);
             return -1;
         }
+        print_fbarray_info(&array);
 
-        printf("fbarray initialized with size: %u\n", 512);
+        // 填充数组元素
+        for (unsigned int i = 0; i < ARRAY_LENGTH / 2; i++)
+        {
+            int *element = (int *)rte_fbarray_get(&array, i);
+            if (element == NULL)
+            {
+                fprintf(stderr, "Failed to get element at index %d\n", i);
+                continue;
+            }
+            *element = i * 10; // 示例数据
+            if (rte_fbarray_set_used(&array, i) != 0) {
+                fprintf(stderr, "Failed to set element at index %d as used\n", i);
+            }
+        }
+        printf("Array populated with sample data.\n");
+
+        // 读取并打印数组元素
+        printf("Array contents:\n");
+        for (unsigned int i = 0; i < ARRAY_LENGTH ; i++)
+        {
+          if (rte_fbarray_is_used(&array, i))
+            {
+                int *element = (int *)rte_fbarray_get(&array, i);
+                if (element != NULL)
+                {
+                    printf("Index %d: %d\n", i, *element);
+                }
+            }
+        }
+        print_fbarray_info(&array);
+
+        // 查找第一个空闲元素
+        int free_idx = rte_fbarray_find_next_free(&array, 0);
+        if (free_idx >= 0)
+        {
+            printf("First free index: %d\n", free_idx);
+        }
+        else
+        {
+            printf("No free elements found.\n");
+        }
+
+        // 查找第一个已使用的元素
+        int used_idx = rte_fbarray_find_next_used(&array, 0);
+        if (used_idx >= 0)
+        {
+            printf("First used index: %d\n", used_idx);
+        }
+        else
+        {
+            printf("No used elements found.\n");
+        }
+        while(1);
+
+        // 输出数组的元数据
+        // printf("Array metadata:\n");
+        // rte_fbarray_dump_metadata(&array, stdout);
+
+        // 销毁数组
+        if (rte_fbarray_destroy(&array) != 0) {
+            fprintf(stderr, "Failed to destroy array\n");
+            return EXIT_FAILURE;
+        }
+        printf("Array destroyed.\n");
 
     }
 
