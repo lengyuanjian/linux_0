@@ -41,52 +41,46 @@ static const char *eal_get_fbarray_path(char *buffer, size_t buflen, const char 
  * way of finding free/used spots without looping through each element.
  */
 
-struct used_mask {
+struct used_mask
+{
 	unsigned int n_masks;
 	uint64_t data[];
 };
 
-static size_t
-calc_mask_size(unsigned int len)
+static size_t calc_mask_size(unsigned int len)
 {
-	/* mask must be multiple of MASK_ALIGN, even though length of array
-	 * itself may not be aligned on that boundary.
-	 */
 	len = RTE_ALIGN_CEIL(len, MASK_ALIGN);
-	return sizeof(struct used_mask) +
-			sizeof(uint64_t) * MASK_LEN_TO_IDX(len);
+	return sizeof(struct used_mask) + sizeof(uint64_t) * MASK_LEN_TO_IDX(len);
 }
 
-static size_t
-calc_data_size(size_t page_sz, unsigned int elt_sz, unsigned int len)
+static size_t calc_data_size(size_t page_sz, unsigned int elt_sz, unsigned int len)
 {
 	size_t data_sz = elt_sz * len;
 	size_t msk_sz = calc_mask_size(len);
 	return RTE_ALIGN_CEIL(data_sz + msk_sz, page_sz);
 }
 
-static struct used_mask *
-get_used_mask(void *data, unsigned int elt_sz, unsigned int len)
+static struct used_mask * get_used_mask(void *data, unsigned int elt_sz, unsigned int len)
 {
 	return (struct used_mask *) RTE_PTR_ADD(data, elt_sz * len);
 }
 
-static int
-resize_and_map(int fd, void *addr, size_t len)
+static int resize_and_map(int fd, void *addr, size_t len)
 {
 	char path[PATH_MAX];
 	void *map_addr;
 
-	if (ftruncate(fd, len)) {
+    if (ftruncate(fd, len))
+    {
 		RTE_LOG(ERR, EAL, "Cannot truncate %s\n", path);
 		/* pass errno up the chain */
 		// rte_errno = errno;
 		return -1;
 	}
 
-	map_addr = mmap(addr, len, PROT_READ | PROT_WRITE,
-			MAP_SHARED | MAP_FIXED, fd, 0);
-	if (map_addr != addr) {
+	map_addr = mmap(addr, len, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
+    if (map_addr != addr)
+    {
 		RTE_LOG(ERR, EAL, "mmap() failed: %s\n", strerror(errno));
 		/* pass errno up the chain */
 		// rte_errno = errno;
@@ -95,59 +89,26 @@ resize_and_map(int fd, void *addr, size_t len)
 	return 0;
 }
 
-static int
-find_next_n(const struct rte_fbarray *arr, unsigned int start, unsigned int n,
-	    bool used)
+static int find_next_n(const struct rte_fbarray *arr, unsigned int start, unsigned int n, bool used)
 {
-	const struct used_mask *msk = get_used_mask(arr->data, arr->elt_sz,
-			arr->len);
+	const struct used_mask *msk = get_used_mask(arr->data, arr->elt_sz, arr->len);
 	unsigned int msk_idx, lookahead_idx, first, first_mod;
 	unsigned int last, last_mod;
 	uint64_t last_msk, ignore_msk;
 
-	/*
-	 * mask only has granularity of MASK_ALIGN, but start may not be aligned
-	 * on that boundary, so construct a special mask to exclude anything we
-	 * don't want to see to avoid confusing ctz.
-	 */
 	first = MASK_LEN_TO_IDX(start);
 	first_mod = MASK_LEN_TO_MOD(start);
 	ignore_msk = ~((1ULL << first_mod) - 1);
 
-	/* array length may not be aligned, so calculate ignore mask for last
-	 * mask index.
-	 */
 	last = MASK_LEN_TO_IDX(arr->len);
 	last_mod = MASK_LEN_TO_MOD(arr->len);
 	last_msk = ~(-1ULL << last_mod);
 
-	for (msk_idx = first; msk_idx < msk->n_masks; msk_idx++) {
+    for (msk_idx = first; msk_idx < msk->n_masks; msk_idx++)
+    {
 		uint64_t cur_msk, lookahead_msk;
 		unsigned int run_start, clz, left;
 		bool found = false;
-		/*
-		 * The process of getting n consecutive bits for arbitrary n is
-		 * a bit involved, but here it is in a nutshell:
-		 *
-		 *  1. let n be the number of consecutive bits we're looking for
-		 *  2. check if n can fit in one mask, and if so, do n-1
-		 *     rshift-ands to see if there is an appropriate run inside
-		 *     our current mask
-		 *    2a. if we found a run, bail out early
-		 *    2b. if we didn't find a run, proceed
-		 *  3. invert the mask and count leading zeroes (that is, count
-		 *     how many consecutive set bits we had starting from the
-		 *     end of current mask) as k
-		 *    3a. if k is 0, continue to next mask
-		 *    3b. if k is not 0, we have a potential run
-		 *  4. to satisfy our requirements, next mask must have n-k
-		 *     consecutive set bits right at the start, so we will do
-		 *     (n-k-1) rshift-ands and check if first bit is set.
-		 *
-		 * Step 4 will need to be repeated if (n-k) > MASK_ALIGN until
-		 * we either run out of masks, lose the run, or find what we
-		 * were looking for.
-		 */
 		cur_msk = msk->data[msk_idx];
 		left = n;
 
@@ -178,12 +139,6 @@ find_next_n(const struct rte_fbarray *arr, unsigned int start, unsigned int n,
 			}
 		}
 
-		/*
-		 * we didn't find our run within the mask, or n > MASK_ALIGN,
-		 * so we're going for plan B.
-		 */
-
-		/* count leading zeroes on inverted mask */
 		if (~cur_msk == 0)
 			clz = sizeof(cur_msk) * 8;
 		else
@@ -197,8 +152,8 @@ find_next_n(const struct rte_fbarray *arr, unsigned int start, unsigned int n,
 		run_start = MASK_ALIGN - clz;
 		left -= clz;
 
-		for (lookahead_idx = msk_idx + 1; lookahead_idx < msk->n_masks;
-				lookahead_idx++) {
+		for (lookahead_idx = msk_idx + 1; lookahead_idx < msk->n_masks; lookahead_idx++) 
+		{
 			unsigned int s_idx, need;
 			lookahead_msk = msk->data[lookahead_idx];
 
@@ -213,7 +168,8 @@ find_next_n(const struct rte_fbarray *arr, unsigned int start, unsigned int n,
 				lookahead_msk &= lookahead_msk >> 1ULL;
 
 			/* if first bit is not set, we've lost the run */
-			if ((lookahead_msk & 1) == 0) {
+			if ((lookahead_msk & 1) == 0) 
+			{
 				/*
 				 * we've scanned this far, so we know there are
 				 * no runs in the space we've lookahead-scanned
@@ -244,32 +200,23 @@ find_next_n(const struct rte_fbarray *arr, unsigned int start, unsigned int n,
 	return -1;
 }
 
-static int
-find_next(const struct rte_fbarray *arr, unsigned int start, bool used)
+static int find_next(const struct rte_fbarray *arr, unsigned int start, bool used)
 {
-	const struct used_mask *msk = get_used_mask(arr->data, arr->elt_sz,
-			arr->len);
+	const struct used_mask *msk = get_used_mask(arr->data, arr->elt_sz, arr->len);
 	unsigned int idx, first, first_mod;
 	unsigned int last, last_mod;
 	uint64_t last_msk, ignore_msk;
 
-	/*
-	 * mask only has granularity of MASK_ALIGN, but start may not be aligned
-	 * on that boundary, so construct a special mask to exclude anything we
-	 * don't want to see to avoid confusing ctz.
-	 */
 	first = MASK_LEN_TO_IDX(start);
 	first_mod = MASK_LEN_TO_MOD(start);
 	ignore_msk = ~((1ULL << first_mod) - 1ULL);
 
-	/* array length may not be aligned, so calculate ignore mask for last
-	 * mask index.
-	 */
 	last = MASK_LEN_TO_IDX(arr->len);
 	last_mod = MASK_LEN_TO_MOD(arr->len);
 	last_msk = ~(-(1ULL) << last_mod);
 
-	for (idx = first; idx < msk->n_masks; idx++) {
+	for (idx = first; idx < msk->n_masks; idx++) 
+	{
 		uint64_t cur = msk->data[idx];
 		int found;
 
@@ -361,8 +308,7 @@ find_contig(const struct rte_fbarray *arr, unsigned int start, bool used)
 	return result;
 }
 
-static int
-set_used(struct rte_fbarray *arr, unsigned int idx, bool used)
+static int set_used(struct rte_fbarray *arr, unsigned int idx, bool used)
 {
 	struct used_mask *msk;
 	uint64_t msk_bit = 1ULL << MASK_LEN_TO_MOD(idx);
@@ -370,7 +316,8 @@ set_used(struct rte_fbarray *arr, unsigned int idx, bool used)
 	bool already_used;
 	int ret = -1;
 
-	if (arr == NULL || idx >= arr->len) {
+	if (arr == NULL || idx >= arr->len) 
+	{
 		// rte_errno = EINVAL;
 		return -1;
 	}
@@ -386,10 +333,13 @@ set_used(struct rte_fbarray *arr, unsigned int idx, bool used)
 	if (used == already_used)
 		goto out;
 
-	if (used) {
+	if (used) 
+	{
 		msk->data[msk_idx] |= msk_bit;
 		arr->count++;
-	} else {
+	} 
+	else 
+	{
 		msk->data[msk_idx] &= ~msk_bit;
 		arr->count--;
 	}
