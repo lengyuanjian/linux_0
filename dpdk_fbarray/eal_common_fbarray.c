@@ -219,22 +219,17 @@ static int find_next(const struct rte_fbarray *arr, unsigned int start, bool use
 	{
 		uint64_t cur = msk->data[idx];
 		int found;
-
 		/* if we're looking for free entries, invert mask */
 		if (!used)
 			cur = ~cur;
-
 		if (idx == last)
 			cur &= last_msk;
-
 		/* ignore everything before start on first iteration */
 		if (idx == first)
 			cur &= ignore_msk;
-
 		/* check if we have any entries */
 		if (cur == 0)
 			continue;
-
 		/*
 		 * find first set bit - that will correspond to whatever it is
 		 * that we're looking for.
@@ -242,13 +237,10 @@ static int find_next(const struct rte_fbarray *arr, unsigned int start, bool use
 		found = __builtin_ctzll(cur);
 		return MASK_GET_IDX(idx, found);
 	}
-	/* we didn't find anything */
-	// rte_errno = used ? -ENOENT : -ENOSPC;
 	return -1;
 }
 
-static int
-find_contig(const struct rte_fbarray *arr, unsigned int start, bool used)
+static int find_contig(const struct rte_fbarray *arr, unsigned int start, bool used)
 {
 	const struct used_mask *msk = get_used_mask(arr->data, arr->elt_sz,
 			arr->len);
@@ -349,8 +341,7 @@ out:
 	return ret;
 }
 
-static int
-fully_validate(const char *name, unsigned int elt_sz, unsigned int len)
+static int fully_validate(const char *name, unsigned int elt_sz, unsigned int len)
 {
 	if (name == NULL || elt_sz == 0 || len == 0 || len > INT_MAX) {
 		// rte_errno = EINVAL;
@@ -492,9 +483,7 @@ void * eal_get_virtual_area(void *requested_addr, size_t *size, size_t page_sz, 
 
 	return aligned_addr;
 }
-int __rte_experimental
-rte_fbarray_init(struct rte_fbarray *arr, const char *name, unsigned int len,
-		unsigned int elt_sz)
+int __rte_experimental rte_fbarray_init(struct rte_fbarray *arr, const char *name, unsigned int len, unsigned int elt_sz)
 {
 	size_t page_sz, mmap_len;
 	char path[PATH_MAX];
@@ -579,8 +568,7 @@ fail:
 }
 
 
-int __rte_experimental
-rte_fbarray_attach(struct rte_fbarray *arr)
+int __rte_experimental rte_fbarray_attach(struct rte_fbarray *arr)
 {
 	size_t page_sz, mmap_len;
 	char path[PATH_MAX];
@@ -641,8 +629,7 @@ fail:
 	return -1;
 }
 
-int __rte_experimental
-rte_fbarray_detach(struct rte_fbarray *arr)
+int __rte_experimental rte_fbarray_detach(struct rte_fbarray *arr)
 {
 	if (arr == NULL) {
 		// rte_errno = EINVAL;
@@ -671,8 +658,7 @@ rte_fbarray_detach(struct rte_fbarray *arr)
 	return 0;
 }
 
-int __rte_experimental
-rte_fbarray_destroy(struct rte_fbarray *arr)
+int __rte_experimental rte_fbarray_destroy(struct rte_fbarray *arr)
 {
 	int fd, ret;
 	char path[PATH_MAX];
@@ -704,8 +690,7 @@ rte_fbarray_destroy(struct rte_fbarray *arr)
 	return ret;
 }
 
-void * __rte_experimental
-rte_fbarray_get(const struct rte_fbarray *arr, unsigned int idx)
+void * __rte_experimental rte_fbarray_get(const struct rte_fbarray *arr, unsigned int idx)
 {
 	void *ret = NULL;
 	if (arr == NULL) {
@@ -723,20 +708,17 @@ rte_fbarray_get(const struct rte_fbarray *arr, unsigned int idx)
 	return ret;
 }
 
-int __rte_experimental
-rte_fbarray_set_used(struct rte_fbarray *arr, unsigned int idx)
+int __rte_experimental rte_fbarray_set_used(struct rte_fbarray *arr, unsigned int idx)
 {
 	return set_used(arr, idx, true);
 }
 
-int __rte_experimental
-rte_fbarray_set_free(struct rte_fbarray *arr, unsigned int idx)
+int __rte_experimental rte_fbarray_set_free(struct rte_fbarray *arr, unsigned int idx)
 {
 	return set_used(arr, idx, false);
 }
 
-int __rte_experimental
-rte_fbarray_is_used(struct rte_fbarray *arr, unsigned int idx)
+int __rte_experimental rte_fbarray_is_used(struct rte_fbarray *arr, unsigned int idx)
 {
 	struct used_mask *msk;
 	int msk_idx;
@@ -762,12 +744,12 @@ rte_fbarray_is_used(struct rte_fbarray *arr, unsigned int idx)
 	return ret;
 }
 
-int __rte_experimental
-rte_fbarray_find_next_free(struct rte_fbarray *arr, unsigned int start)
+int __rte_experimental rte_fbarray_find_next_free(struct rte_fbarray *arr, unsigned int start)
 {
 	int ret = -1;
 
-	if (arr == NULL || start >= arr->len) {
+	if (arr == NULL || start >= arr->len) 
+	{
 		// rte_errno = EINVAL;
 		return -1;
 	}
@@ -775,7 +757,8 @@ rte_fbarray_find_next_free(struct rte_fbarray *arr, unsigned int start)
 	/* prevent array from changing under us */
 	rte_rwlock_read_lock(&arr->rwlock);
 
-	if (arr->len == arr->count) {
+	if (arr->len == arr->count) 
+	{
 		// rte_errno = ENOSPC;
 		goto out;
 	}
@@ -786,12 +769,12 @@ out:
 	return ret;
 }
 
-int __rte_experimental
-rte_fbarray_find_next_used(struct rte_fbarray *arr, unsigned int start)
+int __rte_experimental rte_fbarray_find_next_used(struct rte_fbarray *arr, unsigned int start)
 {
 	int ret = -1;
 
-	if (arr == NULL || start >= arr->len) {
+	if (arr == NULL || start >= arr->len) 
+	{
 		// rte_errno = EINVAL;
 		return -1;
 	}
@@ -799,7 +782,8 @@ rte_fbarray_find_next_used(struct rte_fbarray *arr, unsigned int start)
 	/* prevent array from changing under us */
 	rte_rwlock_read_lock(&arr->rwlock);
 
-	if (arr->count == 0) {
+	if (arr->count == 0) 
+	{
 		// rte_errno = ENOENT;
 		goto out;
 	}
@@ -810,13 +794,12 @@ out:
 	return ret;
 }
 
-int __rte_experimental
-rte_fbarray_find_next_n_free(struct rte_fbarray *arr, unsigned int start,
-		unsigned int n)
+int __rte_experimental rte_fbarray_find_next_n_free(struct rte_fbarray *arr, unsigned int start, unsigned int n)
 {
 	int ret = -1;
 
-	if (arr == NULL || start >= arr->len || n > arr->len) {
+	if (arr == NULL || start >= arr->len || n > arr->len) 
+	{
 		// rte_errno = EINVAL;
 		return -1;
 	}
@@ -824,7 +807,8 @@ rte_fbarray_find_next_n_free(struct rte_fbarray *arr, unsigned int start,
 	/* prevent array from changing under us */
 	rte_rwlock_read_lock(&arr->rwlock);
 
-	if (arr->len == arr->count || arr->len - arr->count < n) {
+	if (arr->len == arr->count || arr->len - arr->count < n) 
+	{
 		// rte_errno = ENOSPC;
 		goto out;
 	}
@@ -841,7 +825,8 @@ rte_fbarray_find_next_n_used(struct rte_fbarray *arr, unsigned int start,
 {
 	int ret = -1;
 
-	if (arr == NULL || start >= arr->len || n > arr->len) {
+	if (arr == NULL || start >= arr->len || n > arr->len) 
+	{
 		// rte_errno = EINVAL;
 		return -1;
 	}
@@ -849,7 +834,8 @@ rte_fbarray_find_next_n_used(struct rte_fbarray *arr, unsigned int start,
 	/* prevent array from changing under us */
 	rte_rwlock_read_lock(&arr->rwlock);
 
-	if (arr->count < n) {
+	if (arr->count < n) 
+	{
 		// rte_errno = ENOENT;
 		goto out;
 	}
@@ -865,7 +851,8 @@ rte_fbarray_find_contig_free(struct rte_fbarray *arr, unsigned int start)
 {
 	int ret = -1;
 
-	if (arr == NULL || start >= arr->len) {
+	if (arr == NULL || start >= arr->len) 
+	{
 		// rte_errno = EINVAL;
 		return -1;
 	}
@@ -873,12 +860,14 @@ rte_fbarray_find_contig_free(struct rte_fbarray *arr, unsigned int start)
 	/* prevent array from changing under us */
 	rte_rwlock_read_lock(&arr->rwlock);
 
-	if (arr->len == arr->count) {
+	if (arr->len == arr->count) 
+	{
 		// rte_errno = ENOSPC;
 		goto out;
 	}
 
-	if (arr->count == 0) {
+	if (arr->count == 0) 
+	{
 		ret = arr->len - start;
 		goto out;
 	}
@@ -889,12 +878,12 @@ out:
 	return ret;
 }
 
-int __rte_experimental
-rte_fbarray_find_contig_used(struct rte_fbarray *arr, unsigned int start)
+int __rte_experimental rte_fbarray_find_contig_used(struct rte_fbarray *arr, unsigned int start)
 {
 	int ret = -1;
 
-	if (arr == NULL || start >= arr->len) {
+	if (arr == NULL || start >= arr->len) 
+	{
 		// rte_errno = EINVAL;
 		return -1;
 	}
@@ -908,8 +897,7 @@ rte_fbarray_find_contig_used(struct rte_fbarray *arr, unsigned int start)
 	return ret;
 }
 
-int __rte_experimental
-rte_fbarray_find_idx(const struct rte_fbarray *arr, const void *elt)
+int __rte_experimental rte_fbarray_find_idx(const struct rte_fbarray *arr, const void *elt)
 {
 	void *end;
 	int ret = -1;
@@ -919,12 +907,14 @@ rte_fbarray_find_idx(const struct rte_fbarray *arr, const void *elt)
 	 * changes - we're doing pointer arithmetic here.
 	 */
 
-	if (arr == NULL || elt == NULL) {
+	if (arr == NULL || elt == NULL) 
+	{
 		// rte_errno = EINVAL;
 		return -1;
 	}
 	end = RTE_PTR_ADD(arr->data, arr->elt_sz * arr->len);
-	if (elt < arr->data || elt >= end) {
+	if (elt < arr->data || elt >= end) 
+	{
 		// rte_errno = EINVAL;
 		return -1;
 	}
@@ -934,18 +924,19 @@ rte_fbarray_find_idx(const struct rte_fbarray *arr, const void *elt)
 	return ret;
 }
 
-void __rte_experimental
-rte_fbarray_dump_metadata(struct rte_fbarray *arr, FILE *f)
+void __rte_experimental rte_fbarray_dump_metadata(struct rte_fbarray *arr, FILE *f)
 {
 	struct used_mask *msk;
 	unsigned int i;
 
-	if (arr == NULL || f == NULL) {
+	if (arr == NULL || f == NULL) 
+	{
 		// rte_errno = EINVAL;
 		return;
 	}
 
-	if (fully_validate(arr->name, arr->elt_sz, arr->len)) {
+	if (fully_validate(arr->name, arr->elt_sz, arr->len)) 
+	{
 		fprintf(f, "Invalid file-backed array\n");
 		goto out;
 	}
