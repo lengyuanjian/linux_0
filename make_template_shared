@@ -1,19 +1,20 @@
 CC = g++
-CFLAGS += -Wall -Wextra -std=c++17 -rdynamic
-LDFLAGS += -rdynamic
+CFLAGS += -Wall -Wextra -std=c++17 -fPIC
+LDFLAGS = -shared
 
-# 生成的可执行文件名称
+# 生成的动态库名称
+
 ifndef TARGET
-	TARGET = app
+	TARGET = libapp
 endif
 
 # Debug 编译选项
 DEBUGDIR = obj/debug
-DEBUG_TARGET = $(TARGET)_debug
+DEBUG_TARGET = $(DEBUGDIR)/$(TARGET)_debug.so
 
 # Release 编译选项
 RELEASEDIR = obj/release
-RELEASE_TARGET = $(TARGET)_release
+RELEASE_TARGET = $(RELEASEDIR)/$(TARGET)_release.so
 
 # 源文件
 SRCS := $(wildcard *.cpp)
@@ -34,7 +35,7 @@ $(DEBUGDIR)/%.o: %.cpp
 	$(CC) $(CFLAGS) -MMD -MP -g -c $< -o $@
 
 $(DEBUG_TARGET): $(DEBUG_OBJS)
-	$(CC) $^ $(LDFLAGS) -g -o $@
+	$(CC) $^ $(LDFLAGS) -o $@
 
 # Release 编译目标
 release: $(RELEASEDIR) $(RELEASE_TARGET)
