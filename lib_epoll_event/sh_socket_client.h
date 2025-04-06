@@ -33,6 +33,7 @@ namespace sh_net
         void close(socket_info * p_info);
         socket_info * connect(const char *ip, unsigned short port, const char *local_ip = nullptr, unsigned short local_port = 0);
         void add_eool(socket_info * clinet_info);
+        socket_info * get_clinet_info(int fd);
     protected:
         void run_epoll();
     };

@@ -103,6 +103,17 @@ namespace sh_net
         info->m_epfd = m_epfd;
         epoll_ctl(m_epfd, EPOLL_CTL_ADD,info->m_fd,&ev);
     }
+    socket_info * socket_client::get_clinet_info(int fd)
+    {
+        socket_info * info = m_socket_manager.get_clinet_info(fd);
+        if(info == nullptr)
+        {
+            return nullptr;
+        }
+        info->m_data.m_ptr = info;
+        set_socket_addr(info);
+        return info;
+    }
     void socket_client::run_epoll()
     {
         epoll_event evs[4096] = {};

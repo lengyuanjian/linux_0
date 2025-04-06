@@ -18,6 +18,10 @@ sh_fd    socket_manager::m_idx=1;
     }
     void socket_manager::del_clinet_info(socket_info * p_info)
     { 
+        if(m_sh_fd_2_socket_info.find(p_info->m_sh_fd) == m_sh_fd_2_socket_info.end())
+        {
+            return;
+        }
         m_sh_fd_2_socket_info.erase(p_info->m_sh_fd);
         m_sh_2_fd.erase(p_info->m_sh_fd);
         delete p_info;

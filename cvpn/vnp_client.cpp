@@ -161,16 +161,18 @@ public:
         if(info->m_data.m_ptr) 
         {
             socket_info * p_remote_clinet_info = (socket_info *)info->m_data.m_ptr;
+            p_remote_clinet_info->m_data.m_ptr = nullptr;
             close_socket(p_remote_clinet_info);
         }
     }
     virtual void on_a_disconnected(socket_info * info)
     {
-        if(info->m_data.m_ptr) 
-        {
-            socket_info * p_remote_clinet_info = (socket_info *)info->m_data.m_ptr;
-            close_socket(p_remote_clinet_info);
-        }
+        // if(info->m_data.m_ptr) 
+        // {
+        //     socket_info * p_remote_clinet_info = (socket_info *)info->m_data.m_ptr;
+        //     p_remote_clinet_info->m_data.m_ptr = nullptr;
+        //     close_socket(p_remote_clinet_info);
+        // }
     }
     virtual int on_recv_data(socket_info * info)
     {

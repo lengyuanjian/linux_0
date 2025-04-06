@@ -54,15 +54,15 @@ public:
     }
     virtual void on_a_disconnected(sh_net::socket_info * info)
     {
-        if(info->m_data.m_ptr) 
-        {
-            m_p_context->get_log()->on_debug(stdout,"on a disconnected [%u] out a close[%u]",info->m_sh_fd, ((socket_info *)(info->m_data.m_ptr))->m_sh_fd);
-            close_socket((socket_info *)(info->m_data.m_ptr));
-        }
-        else
-        {
-            m_p_context->get_log()->on_debug(stdout,"on a disconnected [%u] out nullptr",info->m_sh_fd);
-        }
+        // if(info->m_data.m_ptr) 
+        // {
+        //     m_p_context->get_log()->on_debug(stdout,"on a disconnected [%u] out a close[%u]",info->m_sh_fd, ((socket_info *)(info->m_data.m_ptr))->m_sh_fd);
+        //     close_socket((socket_info *)(info->m_data.m_ptr));
+        // }
+        // else
+        // {
+        //     m_p_context->get_log()->on_debug(stdout,"on a disconnected [%u] out nullptr",info->m_sh_fd);
+        // }
     }
     virtual int on_recv_data(sh_net::socket_info * info)
     {
@@ -151,15 +151,15 @@ public:
     }
     virtual void on_a_disconnected(sh_net::socket_info * info)
     {
-        if(info->m_data.m_ptr) 
-        {
-            m_p_context->get_log()->on_debug(stdout,"on a disconnected [%u] in a close[%u]",info->m_sh_fd, ((socket_info *)(info->m_data.m_ptr))->m_sh_fd);
-            close_socket((socket_info *)(info->m_data.m_ptr));
-        }
-        else
-        {
-            m_p_context->get_log()->on_debug(stdout,"on a disconnected [%u] in nullptr",info->m_sh_fd);
-        }
+        // if(info->m_data.m_ptr) 
+        // {
+        //     m_p_context->get_log()->on_debug(stdout,"on a disconnected [%u] in a close[%u]",info->m_sh_fd, ((socket_info *)(info->m_data.m_ptr))->m_sh_fd);
+        //     close_socket((socket_info *)(info->m_data.m_ptr));
+        // }
+        // else
+        // {
+        //     m_p_context->get_log()->on_debug(stdout,"on a disconnected [%u] in nullptr",info->m_sh_fd);
+        // }
     }
     virtual int on_recv_data(sh_net::socket_info * info)
     {

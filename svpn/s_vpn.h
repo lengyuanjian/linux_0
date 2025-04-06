@@ -44,12 +44,12 @@ class vpn_server:public sh_net::socket_event
     protected:
 
     public:
-    virtual ~vpn_server(){};
+virtual ~vpn_server(){};
     bool init(log_event * p_log, const char * ip, int port);
     bool start();
     void stop();
     void close();
-    public:
+public:
     bool create_channel_server(sh_fd client_id, const char * out_ip, int out_port, const char * in_ip, int in_port, const char * local_ip, int local_port);
     
     // manager clinet_id & channel_id 
