@@ -1,11 +1,12 @@
 #include <cstddef>
 #include <iostream>
-#include "../../lib_epoll_event/sh_log.h"
+#include "../com_lib/net_lib/sh_log.h"
 #include "vpn_core.h"
 #include <vector>
 #include <string>
 #include "business_server.h"
 #include "data_channel_server.h"
+
 
 bool vpn_core::init(const char * ip, int port)
 {
@@ -83,36 +84,43 @@ void vpn_core::exec()
         lambda_print(cmds);
         if(cmds[0] == "c")
         {
-            if (cmds.size() < 8) 
+            if (cmds.size() < 10) 
             {
                 std::cout << "c out_ip out_port in_ip in_port\n";
                 continue;
             } 
             //c 2 172.31.11.200 9424 172.31.11.200 9525 127.0.0.1 3396
+            //c 2 120.16.8.198 17522 120.16.8.198 17523 127.0.0.1 22
+            //c 2 172.31.11.200 120.46.8.198 17522 172.31.11.200 120.46.8.198 17523 127.0.0.1 22
             int id = std::atoi(cmds[1].c_str());
             const char *    out_ip      = cmds[2].c_str();
-            int             out_port    = std::atoi(cmds[3].c_str());
-            const char *    in_ip       = cmds[4].c_str();
-            int             in_port     = std::atoi(cmds[5].c_str());
-            const char *    local_ip    = cmds[6].c_str();
-            int             local_port  = std::atoi(cmds[7].c_str());
-            m_p_context->m_p_business_server->create_channel_server(id, out_ip, out_port, in_ip, in_port, local_ip, local_port);
+            const char *    out_ip1      = cmds[3].c_str();
+            int             out_port    = std::atoi(cmds[4].c_str());
+            const char *    in_ip       = cmds[5].c_str();
+            const char *    in_ip1       = cmds[6].c_str();
+            int             in_port     = std::atoi(cmds[7].c_str());
+            const char *    local_ip    = cmds[8].c_str();
+            int             local_port  = std::atoi(cmds[9].c_str());
+            m_p_context->m_p_business_server->create_channel_server(id, out_ip, out_ip1, out_port, in_ip,in_ip1, in_port, local_ip, local_port);
         }
         else if(cmds[0] == "d" && cmds.size() > 1)
         {
             int id = std::atoi(cmds[1].c_str());
             printf("c %d 172.31.11.200 9424 172.31.11.200 9525 127.0.0.1 3396\n",id);
             const char *    out_ip      = "172.31.11.200";
+            const char *    out_ip1      = "120.16.8.198";
             int             out_port    = 9424;
             const char *    in_ip       = "172.31.11.200";
+            const char *    in_ip1       = "120.16.8.198";
             int             in_port     = 9525;
             const char *    local_ip    = "127.0.0.1";
             int             local_port  = 3396;
-            m_p_context->m_p_business_server->create_channel_server(id, out_ip, out_port, in_ip, in_port, local_ip, local_port);
+            m_p_context->m_p_business_server->create_channel_server(id, out_ip,out_ip1, out_port, in_ip,in_ip1, in_port, local_ip, local_port);
         
         }
         else if(cmds[0] == "h")
         {
+            printf("c out_ip out_port in_ip in_port local_ip local_port\n");
             // m_p_context->m_p_vpn_server->printf_client_channel();
         }
         

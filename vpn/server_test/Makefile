@@ -1,3 +1,3 @@
 
-LDFLAGS +=../../lib_epoll_event/obj/debug/sh_epool_lib_debug.so
+LDFLAGS +=../com_lib/net_lib/sh_epool_lib.a
 include ../../make_template

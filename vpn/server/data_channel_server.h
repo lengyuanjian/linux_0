@@ -1,6 +1,6 @@
 #pragma once
 #include "interface/vpn_context.h"
-#include "../../lib_epoll_event/sh_socket_client.h"
+#include "../com_lib/net_lib/sh_socket_client.h"
 #include <map>
 #include <queue>
 

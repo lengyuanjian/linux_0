@@ -1,0 +1,60 @@
+CC = g++
+CFLAGS += -Wall -Wextra -std=c++17 -fPIC
+DEBUG_CFLAGS += -g -O0
+RELEASE_CFLAGS += -O3 -DNDEBUG
+LDFLAGS = -shared
+
+# 生成的动态库名称
+
+ifndef TARGET
+	TARGET = libapp
+endif
+
+# Debug 编译选项
+DEBUGDIR = obj/debug
+DEBUG_TARGET = $(DEBUGDIR)/$(TARGET)_debug.so
+
+# Release 编译选项
+RELEASEDIR = obj/release
+RELEASE_TARGET = $(RELEASEDIR)/$(TARGET)_release.so
+
+# 源文件
+SRCS := $(wildcard *.cpp)
+# 生成的目标文件
+DEBUG_OBJS := $(patsubst %.cpp,$(DEBUGDIR)/%.o,$(SRCS))
+RELEASE_OBJS := $(patsubst %.cpp,$(RELEASEDIR)/%.o,$(SRCS))
+
+# 默认 Debug 
+debug: $(DEBUGDIR) $(DEBUG_TARGET)
+	ln -sf $(DEBUG_TARGET) $(TARGET).so
+# Debug  编译目标
+all: debug release  
+
+$(DEBUGDIR):
+	mkdir -p $(DEBUGDIR)
+
+$(DEBUGDIR)/%.o: %.cpp
+	$(CC) $(CFLAGS) $(DEBUG_CFLAGS) -c $< -o $@
+
+$(DEBUG_TARGET): $(DEBUG_OBJS)
+	$(CC) $^ $(LDFLAGS) $(DEBUG_CFLAGS) -o $@
+
+# Release 编译目标
+release: $(RELEASEDIR) $(RELEASE_TARGET)
+	ln -sf $(RELEASE_TARGET) $(TARGET).so
+$(RELEASEDIR):
+	mkdir -p $(RELEASEDIR)
+
+$(RELEASEDIR)/%.o: %.cpp
+	$(CC) $(CFLAGS) $(RELEASE_CFLAGS) -c $< -o $@
+
+$(RELEASE_TARGET): $(RELEASE_OBJS)
+	$(CC) $^ $(LDFLAGS) $(RELEASE_CFLAGS) -o $@
+
+# 包含依赖文件
+-include $(DEBUG_OBJS:.o=.d)
+-include $(RELEASE_OBJS:.o=.d)
+
+# 清理目标
+clean:
+	rm -rf obj $(TARGET).so $(DEBUG_TARGET) $(RELEASE_TARGET) $(DEBUG_OBJS:.o=.d) $(RELEASE_OBJS:.o=.d)

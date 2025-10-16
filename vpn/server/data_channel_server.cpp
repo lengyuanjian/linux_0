@@ -215,6 +215,7 @@ void data_channel_server::on_disconnected(sh_net::socket_info * info)
 }
 void data_channel_server::on_a_disconnected(sh_net::socket_info * info)
 {
+    (void)info;
     // sh_net::socket_info * remote_info = (sh_net::socket_info *)info->m_data.m_ptr;
     // if(remote_info != nullptr)
     // {

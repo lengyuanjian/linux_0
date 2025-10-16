@@ -121,7 +121,7 @@ bool business_server::send_create_channel_msg(int m_client_id, int m_channel_id)
         if(it1 != it->second->m_channel_map.end())
         {
             vpn_channel_info * channel_info = it1->second;
-            send_msg_tcp_channel(it->second->m_info->m_fd, channel_info->m_in_ip, channel_info->m_in_port, channel_info->m_local_ip, channel_info->m_local_port);
+            send_msg_tcp_channel(it->second->m_info->m_fd, channel_info->m_in_ip1, channel_info->m_in_port, channel_info->m_local_ip, channel_info->m_local_port);
             return true;
         }
         else 
@@ -181,7 +181,7 @@ void business_server::deal_data(sh_net::socket_info * info, vpn_head * p_head, c
 }
 
 
-vpn_channel_info * business_server::create_channel_server(int client_id, const char * out_ip, int out_port, const char * in_ip, int in_port, const char * local_ip, int local_port)
+vpn_channel_info * business_server::create_channel_server(int client_id, const char * out_ip, const char * out_ip1, int out_port, const char * in_ip, const char * in_ip1, int in_port, const char * local_ip, int local_port)
 {
     auto it = m_clinet_map.find(client_id);
     if(it != m_clinet_map.end())
@@ -199,8 +199,10 @@ vpn_channel_info * business_server::create_channel_server(int client_id, const c
         channel_info->m_client_id = client_id;
         channel_info->m_channel_id = max_channel_id;
         strcpy(channel_info->m_out_ip, out_ip);
+        strcpy(channel_info->m_out_ip1, out_ip1);
         channel_info->m_out_port = out_port;
         strcpy(channel_info->m_in_ip, in_ip);
+        strcpy(channel_info->m_in_ip1, in_ip1);
         channel_info->m_in_port = in_port;
         strcpy(channel_info->m_local_ip, local_ip);
         channel_info->m_local_port = local_port;

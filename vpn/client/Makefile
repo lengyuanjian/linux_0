@@ -1,3 +1,3 @@
-TARGET := lyj_vpn_server
+TARGET := lyj_vpn_client
 LDFLAGS +=../com_lib/net_lib/sh_epool_lib.a
 include ../make_template

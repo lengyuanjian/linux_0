@@ -1,8 +1,7 @@
 #pragma once
 #include "interface/vpn_context.h"
-#include "../../lib_epoll_event/sh_socket_server.h"
-#include "../../vpn_define/vpv_define.h"
-#include <cmath>
+#include "../com_lib/net_lib/sh_socket_server.h"
+#include "../com_lib/protocol/vpv_protocol.h"
 
 struct vpn_client_info
 {
@@ -24,7 +23,7 @@ public:
 public:
     void send_msg_tcp_channel(int fd, const char * server_ip, int server_port, const char * local_ip, int local_port);
     bool send_create_channel_msg(int m_client_id, int m_channel_id);
-    vpn_channel_info * create_channel_server(int client_id, const char * out_ip, int out_port, const char * in_ip, int in_port, const char * local_ip, int local_port);
+    vpn_channel_info * create_channel_server(int client_id, const char * out_ip, const char * out_ip1, int out_port, const char * in_ip, const char * in_ip1, int in_port, const char * local_ip, int local_port);
 protected:
     virtual void on_connected(sh_net::socket_info * info);
     virtual void on_disconnected(sh_net::socket_info * info);

@@ -1,0 +1,67 @@
+CC = g++
+CFLAGS += -Wall -Wextra -std=c++17 -rdynamic
+LDFLAGS += -rdynamic
+
+# 生成的可执行文件名称
+ifndef TARGET
+	TARGET = app
+endif
+
+# Debug 编译选项
+DEBUGDIR = obj/debug
+DEBUG_TARGET = $(TARGET)_debug
+
+# Release 编译选项
+RELEASEDIR = obj/release
+RELEASE_TARGET = $(TARGET)_release
+
+# 源文件
+ifdef DIRS
+	SRCS := $(foreach dir, $(DIRS), $(wildcard $(dir)/*.cpp))
+else
+	SRCS := $(wildcard *.cpp)
+endif
+# 生成的目标文件
+
+FILES := $(notdir $(SRCS))
+DEBUG_OBJS := $(patsubst %.cpp,$(DEBUGDIR)/%.o,$(FILES))
+RELEASE_OBJS := $(patsubst %.cpp,$(RELEASEDIR)/%.o,$(FILES))
+
+# 默认 Debug 
+debug: $(DEBUGDIR) $(DEBUG_TARGET)
+
+# Debug  编译目标
+all: debug release  
+
+$(DEBUGDIR):
+	mkdir -p $(DEBUGDIR)
+
+$(DEBUGDIR)/%.o:$(call find_src,$*)
+	$(CC) $(CFLAGS) -MMD -MP -g -c $< -o $@
+
+$(DEBUG_TARGET): $(DEBUG_OBJS)
+	$(CC) $^ $(LDFLAGS) -g -o $@
+
+# Release 编译目标
+release: $(RELEASEDIR) $(RELEASE_TARGET)
+
+$(RELEASEDIR):
+	mkdir -p $(RELEASEDIR)
+
+$(RELEASEDIR)/%.o: %.cpp
+	$(CC) $(CFLAGS) -MMD -MP -O3 -c $< -o $@
+
+$(RELEASE_TARGET): $(RELEASE_OBJS)
+	$(CC) $^ $(LDFLAGS) -o $@
+
+# 包含依赖文件
+-include $(DEBUG_OBJS:.o=.d)
+-include $(RELEASE_OBJS:.o=.d)
+
+define find_src
+$(firstword $(filter %/$*.cpp, $(SRCS)))
+endef
+
+# 清理目标
+clean:
+	rm -rf obj $(DEBUG_TARGET) $(RELEASE_TARGET) $(DEBUG_OBJS:.o=.d) $(RELEASE_OBJS:.o=.d)
